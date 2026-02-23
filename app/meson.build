@@ -91,18 +91,7 @@ if v4l2_support
     src += [ 'src/v4l2_sink.c' ]
 endif
 
-usb_support = get_option('usb')
-if usb_support
-    src += [
-        'src/usb/aoa_hid.c',
-        'src/usb/gamepad_aoa.c',
-        'src/usb/keyboard_aoa.c',
-        'src/usb/mouse_aoa.c',
-        'src/usb/scrcpy_otg.c',
-        'src/usb/screen_otg.c',
-        'src/usb/usb.c',
-    ]
-endif
+# USB/OTG support removed - TCP listen mode is now the default
 
 cc = meson.get_compiler('c')
 
@@ -118,10 +107,6 @@ dependencies = [
 
 if v4l2_support
     dependencies += dependency('libavdevice', static: static)
-endif
-
-if usb_support
-    dependencies += dependency('libusb-1.0', static: static)
 endif
 
 if host_machine.system() == 'windows'
@@ -169,8 +154,8 @@ conf.set('SERVER_DEBUGGER', get_option('server_debugger'))
 # enable V4L2 support (linux only)
 conf.set('HAVE_V4L2', v4l2_support)
 
-# enable HID over AOA support (linux only)
-conf.set('HAVE_USB', usb_support)
+# USB/OTG support removed - TCP listen mode is now the default
+conf.set('HAVE_USB', false)
 
 configure_file(configuration: conf, output: 'config.h')
 
