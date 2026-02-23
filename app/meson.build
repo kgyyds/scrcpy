@@ -1,9 +1,5 @@
 src = [
     'src/main.c',
-    'src/adb/adb.c',
-    'src/adb/adb_device.c',
-    'src/adb/adb_parser.c',
-    'src/adb/adb_tunnel.c',
     'src/audio_player.c',
     'src/audio_regulator.c',
     'src/cli.c',
@@ -213,13 +209,6 @@ endif
 # do not build tests in release (assertions would not be executed at all)
 if get_option('buildtype') == 'debug'
     tests = [
-        ['test_adb_parser', [
-            'tests/test_adb_parser.c',
-            'src/adb/adb_device.c',
-            'src/adb/adb_parser.c',
-            'src/util/str.c',
-            'src/util/strbuf.c',
-        ]],
         ['test_binary', [
             'tests/test_binary.c',
         ]],

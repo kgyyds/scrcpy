@@ -227,6 +227,10 @@ struct sc_port_range {
 
 #define SC_WINDOW_POSITION_UNDEFINED (-0x8000)
 
+// Default TCP listen ports for PC-side listening mode
+#define SC_DEFAULT_LISTEN_VIDEO_PORT 27183
+#define SC_DEFAULT_LISTEN_CONTROL_PORT 27184
+
 struct scrcpy_options {
     const char *serial;
     const char *crop;
@@ -259,6 +263,9 @@ struct scrcpy_options {
     const char *server_host;
     uint16_t client_listen_video_port;
     uint16_t client_listen_control_port;
+    uint16_t listen_video_port;      // PC listen mode: video/audio port
+    uint16_t listen_control_port;    // PC listen mode: control port
+    const char *listen_address;      // PC listen mode: bind address (e.g., "0.0.0.0")
     uint8_t shortcut_mods; // OR of enum sc_shortcut_mod values
     uint16_t max_size;
     uint32_t video_bit_rate;
@@ -317,6 +324,8 @@ struct scrcpy_options {
     bool require_audio;
     bool kill_adb_on_close;
     bool camera_high_speed;
+    bool listen_only;
+    bool tcp_listen;             // Enable PC-side TCP listen mode
 #define SC_OPTION_LIST_ENCODERS 0x1
 #define SC_OPTION_LIST_DISPLAYS 0x2
 #define SC_OPTION_LIST_CAMERAS 0x4

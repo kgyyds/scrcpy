@@ -101,17 +101,9 @@ scrcpy_otg(struct scrcpy_options *options) {
     bool aoa_initialized = false;
 
 #ifdef _WIN32
-    // On Windows, only one process could open a USB device
-    // <https://github.com/Genymobile/scrcpy/issues/2773>
-    LOGI("Killing adb server (if any)...");
-    if (sc_adb_init()) {
-        unsigned flags = SC_ADB_NO_STDOUT | SC_ADB_NO_STDERR | SC_ADB_NO_LOGERR;
-        // uninterruptible (intr == NULL), but in practice it's very quick
-        sc_adb_kill_server(NULL, flags);
-        sc_adb_destroy();
-    } else {
-        LOGW("Could not call adb executable, adb server not killed");
-    }
+    // Note: ADB is no longer available. On Windows, users should ensure
+    // no other process is holding the USB device.
+    LOGI("Note: If USB device is busy, ensure no other application is using it");
 #endif
 
     static const struct sc_usb_callbacks cbs = {

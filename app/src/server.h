@@ -6,7 +6,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "adb/adb_tunnel.h"
 #include "options.h"
 #include "util/intr.h"
 #include "util/net.h"
@@ -42,6 +41,9 @@ struct sc_server_params {
     uint16_t tunnel_port;
     uint16_t client_listen_video_port;
     uint16_t client_listen_control_port;
+    uint16_t listen_video_port;       // PC listen mode: video/audio port
+    uint16_t listen_control_port;     // PC listen mode: control port
+    const char *listen_address;       // PC listen mode: bind address
     uint16_t max_size;
     uint32_t video_bit_rate;
     uint32_t audio_bit_rate;
@@ -71,6 +73,8 @@ struct sc_server_params {
     bool power_on;
     bool kill_adb_on_close;
     bool camera_high_speed;
+    bool listen_only;
+    bool tcp_listen;                  // PC-side TCP listen mode
     bool vd_destroy_content;
     bool vd_system_decorations;
     uint8_t list;
@@ -90,7 +94,10 @@ struct sc_server {
     bool stopped;
 
     struct sc_intr intr;
-    struct sc_adb_tunnel tunnel;
+
+    // Listening sockets for TCP listen mode
+    sc_socket video_listen_socket;
+    sc_socket control_listen_socket;
 
     sc_socket video_socket;
     sc_socket audio_socket;

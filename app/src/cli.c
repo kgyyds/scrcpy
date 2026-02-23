@@ -59,6 +59,11 @@ enum {
     OPT_SERVER_HOST,
     OPT_CLIENT_LISTEN_VIDEO_PORT,
     OPT_CLIENT_LISTEN_CONTROL_PORT,
+    OPT_LISTEN_ONLY,
+    OPT_LISTEN_VIDEO_PORT,
+    OPT_LISTEN_CONTROL_PORT,
+    OPT_LISTEN_ADDRESS,
+    OPT_TCP_LISTEN,
     OPT_NO_CLIPBOARD_AUTOSYNC,
     OPT_TCPIP,
     OPT_RAW_KEY_EVENTS,
@@ -961,6 +966,40 @@ static const struct sc_option options[] = {
         .longopt = "client-listen-control-port",
         .argdesc = "port",
         .text = "Set the TCP port on which the client will listen for control stream from the device.",
+    },
+    {
+        .longopt_id = OPT_LISTEN_ONLY,
+        .longopt = "listen-only",
+        .text = "Listen-only mode: do not use adb, just wait for device connection. "
+                "Requires --client-listen-video-port and --server-host.",
+    },
+    {
+        .longopt_id = OPT_LISTEN_VIDEO_PORT,
+        .longopt = "listen-video-port",
+        .argdesc = "port",
+        .text = "Set the TCP port on which the PC will listen for video/audio stream from the device.\n"
+                "Default is " STR(SC_DEFAULT_LISTEN_VIDEO_PORT) ".",
+    },
+    {
+        .longopt_id = OPT_LISTEN_CONTROL_PORT,
+        .longopt = "listen-control-port",
+        .argdesc = "port",
+        .text = "Set the TCP port on which the PC will listen for control stream from the device.\n"
+                "Default is " STR(SC_DEFAULT_LISTEN_CONTROL_PORT) ".",
+    },
+    {
+        .longopt_id = OPT_LISTEN_ADDRESS,
+        .longopt = "listen-address",
+        .argdesc = "address",
+        .text = "Set the IP address on which the PC will listen. Use 0.0.0.0 to bind to all interfaces.\n"
+                "Default is 0.0.0.0 (all interfaces).",
+    },
+    {
+        .longopt_id = OPT_TCP_LISTEN,
+        .longopt = "tcp-listen",
+        .text = "Enable TCP listen mode: PC listens on specified ports, device connects to PC.\n"
+                "This mode does not require adb. Use --listen-video-port and --listen-control-port\n"
+                "to configure the listening ports.",
     },
     {
         .shortopt = 'v',
@@ -2500,6 +2539,25 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                 if (!parse_port(optarg, &opts->client_listen_control_port)) {
                     return false;
                 }
+                break;
+            case OPT_LISTEN_ONLY:
+                opts->listen_only = true;
+                break;
+            case OPT_LISTEN_VIDEO_PORT:
+                if (!parse_port(optarg, &opts->listen_video_port)) {
+                    return false;
+                }
+                break;
+            case OPT_LISTEN_CONTROL_PORT:
+                if (!parse_port(optarg, &opts->listen_control_port)) {
+                    return false;
+                }
+                break;
+            case OPT_LISTEN_ADDRESS:
+                opts->listen_address = optarg;
+                break;
+            case OPT_TCP_LISTEN:
+                opts->tcp_listen = true;
                 break;
             case 'n':
                 opts->control = false;
