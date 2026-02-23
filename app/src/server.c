@@ -625,9 +625,15 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
                 LOGE("Video stream enabled but client_listen_video_port not set");
                 goto fail;
             }
-            video_server_socket = net_listen_intr(&server->intr, IPV4_LOCALHOST, port, 1);
+            video_server_socket = net_socket();
             if (video_server_socket == SC_SOCKET_NONE) {
+                LOGE("Could not create video server socket");
+                goto fail;
+            }
+            bool ok = net_listen_intr(&server->intr, video_server_socket, IPV4_LOCALHOST, port, 1);
+            if (!ok) {
                 LOGE("Could not listen on video port %" PRIu16, port);
+                net_close(video_server_socket);
                 goto fail;
             }
             LOGI("Listening on video port %" PRIu16, port);
@@ -646,9 +652,15 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
                 LOGE("Audio stream enabled but client_listen_control_port not set for audio");
                 goto fail;
             }
-            audio_server_socket = net_listen_intr(&server->intr, IPV4_LOCALHOST, port, 1);
+            audio_server_socket = net_socket();
             if (audio_server_socket == SC_SOCKET_NONE) {
+                LOGE("Could not create audio server socket");
+                goto fail;
+            }
+            bool ok = net_listen_intr(&server->intr, audio_server_socket, IPV4_LOCALHOST, port, 1);
+            if (!ok) {
                 LOGE("Could not listen on audio port %" PRIu16, port);
+                net_close(audio_server_socket);
                 goto fail;
             }
             LOGI("Listening on audio port %" PRIu16, port);
@@ -666,9 +678,15 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
                 LOGE("Control stream enabled but client_listen_control_port not set");
                 goto fail;
             }
-            control_server_socket = net_listen_intr(&server->intr, IPV4_LOCALHOST, port, 1);
+            control_server_socket = net_socket();
             if (control_server_socket == SC_SOCKET_NONE) {
+                LOGE("Could not create control server socket");
+                goto fail;
+            }
+            bool ok = net_listen_intr(&server->intr, control_server_socket, IPV4_LOCALHOST, port, 1);
+            if (!ok) {
                 LOGE("Could not listen on control port %" PRIu16, port);
+                net_close(control_server_socket);
                 goto fail;
             }
             LOGI("Listening on control port %" PRIu16, port);

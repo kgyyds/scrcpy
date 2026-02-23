@@ -40,6 +40,8 @@ struct sc_server_params {
     struct sc_port_range port_range;
     uint32_t tunnel_host;
     uint16_t tunnel_port;
+    uint16_t client_listen_video_port;
+    uint16_t client_listen_control_port;
     uint16_t max_size;
     uint32_t video_bit_rate;
     uint32_t audio_bit_rate;
