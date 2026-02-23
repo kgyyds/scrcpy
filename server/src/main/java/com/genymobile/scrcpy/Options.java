@@ -80,8 +80,9 @@ public class Options {
     private boolean sendDummyByte = true; // write a byte on start to detect connection issues
     private boolean sendCodecMeta = true; // write the codec metadata before the stream
     private String serverHost;
-    private int listenVideoPort;
-    private int listenControlPort;
+    private int connectVideoPort;
+    private int connectControlPort;
+    private String clientHost;
 
     public Ln.Level getLogLevel() {
         return logLevel;
@@ -291,28 +292,36 @@ public class Options {
         return sendCodecMeta;
     }
 
-    public int getListenVideoPort() {
-        return listenVideoPort;
-    }
-
-    public void setListenVideoPort(int listenVideoPort) {
-        this.listenVideoPort = listenVideoPort;
-    }
-
-    public int getListenControlPort() {
-        return listenControlPort;
-    }
-
-    public void setListenControlPort(int listenControlPort) {
-        this.listenControlPort = listenControlPort;
-    }
-
     public String getServerHost() {
         return serverHost;
     }
 
     public void setServerHost(String serverHost) {
         this.serverHost = serverHost;
+    }
+
+    public String getClientHost() {
+        return clientHost;
+    }
+
+    public void setClientHost(String clientHost) {
+        this.clientHost = clientHost;
+    }
+
+    public int getConnectVideoPort() {
+        return connectVideoPort;
+    }
+
+    public void setConnectVideoPort(int connectVideoPort) {
+        this.connectVideoPort = connectVideoPort;
+    }
+
+    public int getConnectControlPort() {
+        return connectControlPort;
+    }
+
+    public void setConnectControlPort(int connectControlPort) {
+        this.connectControlPort = connectControlPort;
     }
 
     @SuppressWarnings("MethodLength")
@@ -391,16 +400,21 @@ public class Options {
                 case "video_bit_rate":
                     options.videoBitRate = Integer.parseInt(value);
                     break;
-                case "listen_video_port":
-                    options.listenVideoPort = Integer.parseInt(value);
-                    break;
-                case "listen_control_port":
-                    options.listenControlPort = Integer.parseInt(value);
-                    break;
                 case "server_host":
                     if (!value.isEmpty()) {
                         options.serverHost = value;
                     }
+                    break;
+                case "client_host":
+                    if (!value.isEmpty()) {
+                        options.clientHost = value;
+                    }
+                    break;
+                case "connect_video_port":
+                    options.connectVideoPort = Integer.parseInt(value);
+                    break;
+                case "connect_control_port":
+                    options.connectControlPort = Integer.parseInt(value);
                     break;
                 case "audio_bit_rate":
                     options.audioBitRate = Integer.parseInt(value);

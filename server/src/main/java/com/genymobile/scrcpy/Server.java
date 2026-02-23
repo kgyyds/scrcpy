@@ -105,8 +105,9 @@ public final class Server {
         DesktopConnection connection = null;
 
         try {
+            // Client mode - device connects to PC server
             connection = DesktopConnection.open(options.getScid(), options.isTunnelForward(), options.getVideo(), options.getAudio(), options.getControl(), options.getSendDummyByte(),
-                options.getServerHost(), options.getListenVideoPort(), options.getListenControlPort());
+                options.getServerHost(), options.getConnectVideoPort(), options.getConnectControlPort());
             if (options.getSendDeviceMeta()) {
                 connection.sendDeviceMeta(Device.getDeviceName());
             }
@@ -129,12 +130,7 @@ public final class Server {
                     audioCapture = new AudioPlaybackCapture(options.getAudioDup());
                 }
 
-                Streamer audioStreamer;
-                if (options.getListenVideoPort() > 0) {
-                    audioStreamer = new Streamer(connection.getAudioOutputStream(), audioCodec, options.getSendCodecMeta(), options.getSendFrameMeta());
-                } else {
-                    audioStreamer = new Streamer(connection.getAudioFd(), audioCodec, options.getSendCodecMeta(), options.getSendFrameMeta());
-                }
+                Streamer audioStreamer = new Streamer(connection.getAudioOutputStream(), audioCodec, options.getSendCodecMeta(), options.getSendFrameMeta());
                 AsyncProcessor audioRecorder;
                 if (audioCodec == AudioCodec.RAW) {
                     audioRecorder = new AudioRawRecorder(audioCapture, audioStreamer);
@@ -145,14 +141,8 @@ public final class Server {
             }
 
             if (video) {
-                Streamer videoStreamer;
-                if (options.getListenVideoPort() > 0) {
-                    videoStreamer = new Streamer(connection.getVideoOutputStream(), options.getVideoCodec(), options.getSendCodecMeta(),
-                            options.getSendFrameMeta());
-                } else {
-                    videoStreamer = new Streamer(connection.getVideoFd(), options.getVideoCodec(), options.getSendCodecMeta(),
-                            options.getSendFrameMeta());
-                }
+                Streamer videoStreamer = new Streamer(connection.getVideoOutputStream(), options.getVideoCodec(), options.getSendCodecMeta(),
+                        options.getSendFrameMeta());
                 SurfaceCapture surfaceCapture;
                 if (options.getVideoSource() == VideoSource.DISPLAY) {
                     NewDisplay newDisplay = options.getNewDisplay();
