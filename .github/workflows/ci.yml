@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, dev ]
+  pull_request:
+    branches: [ master, dev ]
+
+jobs:
+  build-server:
+    runs-on: ubuntu-latest
+    env:
+      GRADLE: gradle
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Build scrcpy-server
+        run: release/build_server.sh
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-server
+          path: release/work/build-server/server/scrcpy-server
+
+  build-client-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
+             libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
+             libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
+             libv4l-dev
+
+      - name: Build client
+        run: |
+          meson setup build --buildtype=release --strip -Db_lto=true
+          ninja -C build
+
+      - name: Test client
+        run: release/test_client.sh
+
+      - name: Upload client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-client-linux
+          path: |
+            build/scrcpy
+            build/scrcpy-server
+
+  build-client-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
+             libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
+             libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
+             mingw-w64 mingw-w64-tools libz-mingw-w64-dev
+
+      - name: Build client (win64)
+        run: release/build_windows.sh 64
+
+      - name: Upload client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-client-win64
+          path: release/work/build-win64/dist/
+
+  build-client-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install meson nasm libiconv zlib automake autoconf libtool
+
+      - name: Build client
+        env:
+          MACOSX_DEPLOYMENT_TARGET: 10.13
+        run: |
+          meson setup build --buildtype=release --strip -Db_lto=true
+          ninja -C build
+
+      - name: Upload client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-client-macos
+          path: |
+            build/scrcpy
+            build/scrcpy-server
