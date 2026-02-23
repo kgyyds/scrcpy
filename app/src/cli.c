@@ -56,6 +56,8 @@ enum {
     OPT_V4L2_BUFFER,
     OPT_TUNNEL_HOST,
     OPT_TUNNEL_PORT,
+    OPT_CLIENT_LISTEN_VIDEO_PORT,
+    OPT_CLIENT_LISTEN_CONTROL_PORT,
     OPT_NO_CLIPBOARD_AUTOSYNC,
     OPT_TCPIP,
     OPT_RAW_KEY_EVENTS,
@@ -939,6 +941,18 @@ static const struct sc_option options[] = {
                 "--force-adb-forward.\n"
                 "Default is 0 (not forced): the local port used for "
                 "establishing the tunnel will be used.",
+    },
+    {
+        .longopt_id = OPT_CLIENT_LISTEN_VIDEO_PORT,
+        .longopt = "client-listen-video-port",
+        .argdesc = "port",
+        .text = "Set the TCP port on which the client will listen for video stream from the device.",
+    },
+    {
+        .longopt_id = OPT_CLIENT_LISTEN_CONTROL_PORT,
+        .longopt = "client-listen-control-port",
+        .argdesc = "port",
+        .text = "Set the TCP port on which the client will listen for control stream from the device.",
     },
     {
         .shortopt = 'v',
@@ -2463,6 +2477,16 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                 break;
             case OPT_TUNNEL_PORT:
                 if (!parse_port(optarg, &opts->tunnel_port)) {
+                    return false;
+                }
+                break;
+            case OPT_CLIENT_LISTEN_VIDEO_PORT:
+                if (!parse_port(optarg, &opts->client_listen_video_port)) {
+                    return false;
+                }
+                break;
+            case OPT_CLIENT_LISTEN_CONTROL_PORT:
+                if (!parse_port(optarg, &opts->client_listen_control_port)) {
                     return false;
                 }
                 break;

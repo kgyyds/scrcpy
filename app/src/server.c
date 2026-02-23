@@ -601,7 +601,87 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
     sc_socket video_socket = SC_SOCKET_NONE;
     sc_socket audio_socket = SC_SOCKET_NONE;
     sc_socket control_socket = SC_SOCKET_NONE;
-    if (!tunnel->forward) {
+    // New client-side listening mode
+    if (server->params.client_listen_video_port || server->params.client_listen_control_port) {
+        LOGD("Client listening for device connection");
+
+        sc_socket video_server_socket = SC_SOCKET_NONE;
+        sc_socket audio_server_socket = SC_SOCKET_NONE;
+        sc_socket control_server_socket = SC_SOCKET_NONE;
+
+        if (video) {
+            uint16_t port = server->params.client_listen_video_port;
+            if (!port) {
+                LOGE("Video stream enabled but client_listen_video_port not set");
+                goto fail;
+            }
+            video_server_socket = net_listen_intr(&server->intr, IPV4_LOCALHOST, port, 1);
+            if (video_server_socket == SC_SOCKET_NONE) {
+                LOGE("Could not listen on video port %" PRIu16, port);
+                goto fail;
+            }
+            LOGI("Listening on video port %" PRIu16, port);
+            video_socket = net_accept_intr(&server->intr, video_server_socket);
+            net_close(video_server_socket); // Close listening socket after accepting
+            if (video_socket == SC_SOCKET_NONE) {
+                LOGE("Could not accept video connection");
+                goto fail;
+            }
+        }
+
+        if (audio) {
+            // For now, audio uses the control port if no dedicated audio port is provided
+            uint16_t port = server->params.client_listen_control_port;
+            if (!port) {
+                LOGE("Audio stream enabled but client_listen_control_port not set for audio");
+                goto fail;
+            }
+            audio_server_socket = net_listen_intr(&server->intr, IPV4_LOCALHOST, port, 1);
+            if (audio_server_socket == SC_SOCKET_NONE) {
+                LOGE("Could not listen on audio port %" PRIu16, port);
+                goto fail;
+            }
+            LOGI("Listening on audio port %" PRIu16, port);
+            audio_socket = net_accept_intr(&server->intr, audio_server_socket);
+            net_close(audio_server_socket); // Close listening socket after accepting
+            if (audio_socket == SC_SOCKET_NONE) {
+                LOGE("Could not accept audio connection");
+                goto fail;
+            }
+        }
+
+        if (control) {
+            uint16_t port = server->params.client_listen_control_port;
+            if (!port) {
+                LOGE("Control stream enabled but client_listen_control_port not set");
+                goto fail;
+            }
+            control_server_socket = net_listen_intr(&server->intr, IPV4_LOCALHOST, port, 1);
+            if (control_server_socket == SC_SOCKET_NONE) {
+                LOGE("Could not listen on control port %" PRIu16, port);
+                goto fail;
+            }
+            LOGI("Listening on control port %" PRIu16, port);
+            control_socket = net_accept_intr(&server->intr, control_server_socket);
+            net_close(control_server_socket); // Close listening socket after accepting
+            if (control_socket == SC_SOCKET_NONE) {
+                LOGE("Could not accept control connection");
+                goto fail;
+            }
+        }
+
+        // Assign accepted sockets to server structure
+        server->video_socket = video_socket;
+        server->audio_socket = audio_socket;
+        server->control_socket = control_socket;
+
+        // The server sends its infos
+        if (!sc_server_recv_info(server, info)) {
+            LOGE("Could not retrieve server info");
+            goto fail;
+        }
+
+    } else if (!tunnel->forward) {
         if (video) {
             video_socket =
                 net_accept_intr(&server->intr, tunnel->server_socket);
