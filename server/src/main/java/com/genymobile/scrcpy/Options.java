@@ -79,6 +79,8 @@ public class Options {
     private boolean sendFrameMeta = true; // send PTS so that the client may record properly
     private boolean sendDummyByte = true; // write a byte on start to detect connection issues
     private boolean sendCodecMeta = true; // write the codec metadata before the stream
+    private int listenVideoPort;
+    private int listenControlPort;
 
     public Ln.Level getLogLevel() {
         return logLevel;
@@ -288,6 +290,22 @@ public class Options {
         return sendCodecMeta;
     }
 
+    public int getListenVideoPort() {
+        return listenVideoPort;
+    }
+
+    public void setListenVideoPort(int listenVideoPort) {
+        this.listenVideoPort = listenVideoPort;
+    }
+
+    public int getListenControlPort() {
+        return listenControlPort;
+    }
+
+    public void setListenControlPort(int listenControlPort) {
+        this.listenControlPort = listenControlPort;
+    }
+
     @SuppressWarnings("MethodLength")
     public static Options parse(String... args) {
         if (args.length < 1) {
@@ -363,6 +381,12 @@ public class Options {
                     break;
                 case "video_bit_rate":
                     options.videoBitRate = Integer.parseInt(value);
+                    break;
+                case "listen_video_port":
+                    options.listenVideoPort = Integer.parseInt(value);
+                    break;
+                case "listen_control_port":
+                    options.listenControlPort = Integer.parseInt(value);
                     break;
                 case "audio_bit_rate":
                     options.audioBitRate = Integer.parseInt(value);
