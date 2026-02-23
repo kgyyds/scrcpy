@@ -107,7 +107,7 @@ public final class Server {
         try {
             // Client mode - device connects to PC server
             connection = DesktopConnection.open(options.getScid(), options.isTunnelForward(), options.getVideo(), options.getAudio(), options.getControl(), options.getSendDummyByte(),
-                options.getServerHost(), options.getConnectVideoPort(), options.getConnectControlPort());
+                options.getServerHost(), options.getConnectVideoPort(), options.getConnectAudioPort(), options.getConnectControlPort());
             if (options.getSendDeviceMeta()) {
                 connection.sendDeviceMeta(Device.getDeviceName());
             }

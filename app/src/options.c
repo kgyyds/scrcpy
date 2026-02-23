@@ -45,6 +45,7 @@ const struct scrcpy_options scrcpy_options_default = {
     .client_listen_video_port = 0,
     .client_listen_control_port = 0,
     .listen_video_port = SC_DEFAULT_LISTEN_VIDEO_PORT,
+    .listen_audio_port = SC_DEFAULT_LISTEN_AUDIO_PORT,
     .listen_control_port = SC_DEFAULT_LISTEN_CONTROL_PORT,
     .listen_address = NULL,  // NULL means bind to INADDR_ANY (0.0.0.0)
     .shortcut_mods = SC_SHORTCUT_MOD_LALT | SC_SHORTCUT_MOD_LSUPER,

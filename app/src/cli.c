@@ -60,6 +60,7 @@ enum {
     OPT_CLIENT_LISTEN_VIDEO_PORT,
     OPT_CLIENT_LISTEN_CONTROL_PORT,
     OPT_LISTEN_VIDEO_PORT,
+    OPT_LISTEN_AUDIO_PORT,
     OPT_LISTEN_CONTROL_PORT,
     OPT_LISTEN_ADDRESS,
     OPT_TCP_LISTEN,
@@ -970,8 +971,15 @@ static const struct sc_option options[] = {
         .longopt_id = OPT_LISTEN_VIDEO_PORT,
         .longopt = "listen-video-port",
         .argdesc = "port",
-        .text = "Set the TCP port on which the PC will listen for video/audio stream from the device.\n"
+        .text = "Set the TCP port on which the PC will listen for video stream from the device.\n"
                 "Default is " STR(SC_DEFAULT_LISTEN_VIDEO_PORT) ".",
+    },
+    {
+        .longopt_id = OPT_LISTEN_AUDIO_PORT,
+        .longopt = "listen-audio-port",
+        .argdesc = "port",
+        .text = "Set the TCP port on which the PC will listen for audio stream from the device.\n"
+                "Default is " STR(SC_DEFAULT_LISTEN_AUDIO_PORT) ".",
     },
     {
         .longopt_id = OPT_LISTEN_CONTROL_PORT,
@@ -991,7 +999,7 @@ static const struct sc_option options[] = {
         .longopt_id = OPT_TCP_LISTEN,
         .longopt = "tcp-listen",
         .text = "Enable TCP listen mode (default): PC listens on specified ports, device connects to PC.\n"
-                "This mode does not require adb. Use --listen-video-port and --listen-control-port\n"
+                "This mode does not require adb. Use --listen-video-port, --listen-audio-port and --listen-control-port\n"
                 "to configure the listening ports. This is now the default behavior.",
     },
     {
@@ -2535,6 +2543,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                 break;
             case OPT_LISTEN_VIDEO_PORT:
                 if (!parse_port(optarg, &opts->listen_video_port)) {
+                    return false;
+                }
+                break;
+            case OPT_LISTEN_AUDIO_PORT:
+                if (!parse_port(optarg, &opts->listen_audio_port)) {
                     return false;
                 }
                 break;

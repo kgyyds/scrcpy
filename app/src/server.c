@@ -207,6 +207,7 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
         LOGI("TCP listen mode: waiting for device connection...");
 
         sc_socket video_listen_socket = SC_SOCKET_NONE;
+        sc_socket audio_listen_socket = SC_SOCKET_NONE;
         sc_socket control_listen_socket = SC_SOCKET_NONE;
 
         // Parse listen address
@@ -218,11 +219,11 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
             }
         }
 
-        // Create and bind video/audio listening socket
-        if (video || audio) {
+        // Create and bind video listening socket
+        if (video) {
             uint16_t port = server->params.listen_video_port;
             if (!port) {
-                LOGE("Video/audio stream enabled but listen_video_port not set");
+                LOGE("Video stream enabled but listen_video_port not set");
                 goto fail;
             }
             video_listen_socket = net_socket();
@@ -245,8 +246,37 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
                 LOGE("Could not accept video connection");
                 goto fail;
             }
-            LOGI("Device connected for video/audio stream");
-            audio_socket = video_socket;  // Audio shares the same socket as video
+            LOGI("Device connected for video stream");
+        }
+
+        // Create and bind audio listening socket
+        if (audio) {
+            uint16_t port = server->params.listen_audio_port;
+            if (!port) {
+                LOGE("Audio stream enabled but listen_audio_port not set");
+                goto fail;
+            }
+            audio_listen_socket = net_socket();
+            if (audio_listen_socket == SC_SOCKET_NONE) {
+                LOGE("Could not create audio listen socket");
+                goto fail;
+            }
+            bool ok = net_listen_intr(&server->intr, audio_listen_socket,
+                                      listen_addr, port, 1);
+            if (!ok) {
+                LOGE("Could not listen on audio port %" PRIu16, port);
+                net_close(audio_listen_socket);
+                goto fail;
+            }
+            LOGI("Listening on audio port %" PRIu16 " (address: %s)",
+                 port, server->params.listen_address ? server->params.listen_address : "0.0.0.0");
+            audio_socket = net_accept_intr(&server->intr, audio_listen_socket);
+            net_close(audio_listen_socket);  // Close listening socket after accepting
+            if (audio_socket == SC_SOCKET_NONE) {
+                LOGE("Could not accept audio connection");
+                goto fail;
+            }
+            LOGI("Device connected for audio stream");
         }
 
         // Create and bind control listening socket
@@ -291,9 +321,14 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
         server->control_socket = control_socket;
 
         // The device sends its info
-        sc_socket first_socket = video ? video_socket
-                               : audio ? audio_socket
-                                       : control_socket;
+        sc_socket first_socket;
+        if (video_socket != SC_SOCKET_NONE) {
+            first_socket = video_socket;
+        } else if (audio_socket != SC_SOCKET_NONE) {
+            first_socket = audio_socket;
+        } else {
+            first_socket = control_socket;
+        }
         if (!device_read_info(&server->intr, first_socket, info)) {
             LOGE("Could not retrieve device info");
             goto fail;

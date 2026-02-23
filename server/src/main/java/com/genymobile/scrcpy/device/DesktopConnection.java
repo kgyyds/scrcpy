@@ -35,10 +35,24 @@ public final class DesktopConnection implements Closeable {
     }
 
     public static DesktopConnection open(int scid, boolean tunnelForward, boolean video, boolean audio, boolean control, boolean sendDummyByte,
-            String serverHost, int connectVideoPort, int connectControlPort) throws IOException {
+            String serverHost, int connectVideoPort, int connectAudioPort, int connectControlPort) throws IOException {
         Socket videoSocket = null;
         Socket audioSocket = null;
         Socket controlSocket = null;
+
+        // Validate parameters
+        if (serverHost == null || serverHost.isEmpty()) {
+            throw new IllegalArgumentException("serverHost cannot be null or empty");
+        }
+        if (connectVideoPort < 1 || connectVideoPort > 65535) {
+            throw new IllegalArgumentException("Video port must be between 1 and 65535");
+        }
+        if (connectAudioPort < 1 || connectAudioPort > 65535) {
+            throw new IllegalArgumentException("Audio port must be between 1 and 65535");
+        }
+        if (connectControlPort < 1 || connectControlPort > 65535) {
+            throw new IllegalArgumentException("Control port must be between 1 and 65535");
+        }
 
         try {
             // Client mode - device connects to PC server
@@ -52,7 +66,7 @@ public final class DesktopConnection implements Closeable {
             }
             if (audio) {
                 audioSocket = new Socket();
-                audioSocket.connect(new java.net.InetSocketAddress(serverHost, connectVideoPort));
+                audioSocket.connect(new java.net.InetSocketAddress(serverHost, connectAudioPort));
                 if (sendDummyByte) {
                     audioSocket.getOutputStream().write(0);
                     sendDummyByte = false;

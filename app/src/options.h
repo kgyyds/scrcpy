@@ -229,7 +229,8 @@ struct sc_port_range {
 
 // Default TCP listen ports for PC-side listening mode
 #define SC_DEFAULT_LISTEN_VIDEO_PORT 27183
-#define SC_DEFAULT_LISTEN_CONTROL_PORT 27184
+#define SC_DEFAULT_LISTEN_AUDIO_PORT 27184
+#define SC_DEFAULT_LISTEN_CONTROL_PORT 27185
 
 struct scrcpy_options {
     const char *serial;
@@ -263,7 +264,8 @@ struct scrcpy_options {
     const char *server_host;
     uint16_t client_listen_video_port;
     uint16_t client_listen_control_port;
-    uint16_t listen_video_port;      // PC listen mode: video/audio port
+    uint16_t listen_video_port;      // PC listen mode: video port
+    uint16_t listen_audio_port;      // PC listen mode: audio port
     uint16_t listen_control_port;    // PC listen mode: control port
     const char *listen_address;      // PC listen mode: bind address (e.g., "0.0.0.0")
     uint8_t shortcut_mods; // OR of enum sc_shortcut_mod values

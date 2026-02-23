@@ -80,8 +80,12 @@ public class Options {
     private boolean sendDummyByte = true; // write a byte on start to detect connection issues
     private boolean sendCodecMeta = true; // write the codec metadata before the stream
     private String serverHost;
-    private int connectVideoPort;
-    private int connectControlPort;
+    private static final int DEFAULT_CONNECT_VIDEO_PORT = 27183;
+    private static final int DEFAULT_CONNECT_AUDIO_PORT = 27184;
+    private static final int DEFAULT_CONNECT_CONTROL_PORT = 27185;
+    private int connectVideoPort = DEFAULT_CONNECT_VIDEO_PORT;
+    private int connectAudioPort = DEFAULT_CONNECT_AUDIO_PORT;
+    private int connectControlPort = DEFAULT_CONNECT_CONTROL_PORT;
     private String clientHost;
 
     public Ln.Level getLogLevel() {
@@ -324,6 +328,14 @@ public class Options {
         this.connectControlPort = connectControlPort;
     }
 
+    public int getConnectAudioPort() {
+        return connectAudioPort;
+    }
+
+    public void setConnectAudioPort(int connectAudioPort) {
+        this.connectAudioPort = connectAudioPort;
+    }
+
     @SuppressWarnings("MethodLength")
     public static Options parse(String... args) {
         if (args.length < 1) {
@@ -415,6 +427,9 @@ public class Options {
                     break;
                 case "connect_control_port":
                     options.connectControlPort = Integer.parseInt(value);
+                    break;
+                case "connect_audio_port":
+                    options.connectAudioPort = Integer.parseInt(value);
                     break;
                 case "audio_bit_rate":
                     options.audioBitRate = Integer.parseInt(value);
