@@ -5,9 +5,6 @@
 #include <stdlib.h>
 #include <SDL2/SDL.h>
 
-#ifdef _WIN32
-# include "adb/adb.h"
-#endif
 #include "events.h"
 #include "usb/screen_otg.h"
 #include "usb/aoa_hid.h"
