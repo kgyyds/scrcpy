@@ -11,7 +11,9 @@
 #include "cli.h"
 #include "options.h"
 #include "scrcpy.h"
+#ifdef HAVE_USB
 #include "usb/scrcpy_otg.h"
+#endif
 #include "util/log.h"
 #include "util/net.h"
 #include "util/thread.h"
