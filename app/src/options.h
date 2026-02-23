@@ -324,7 +324,6 @@ struct scrcpy_options {
     bool require_audio;
     bool kill_adb_on_close;
     bool camera_high_speed;
-    bool listen_only;
     bool tcp_listen;             // Enable PC-side TCP listen mode
 #define SC_OPTION_LIST_ENCODERS 0x1
 #define SC_OPTION_LIST_DISPLAYS 0x2

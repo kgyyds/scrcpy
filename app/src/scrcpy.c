@@ -459,7 +459,6 @@ scrcpy(struct scrcpy_options *options) {
         .listen_video_port = options->listen_video_port,
         .listen_control_port = options->listen_control_port,
         .listen_address = options->listen_address,
-        .listen_only = options->listen_only,
         .tcp_listen = options->tcp_listen,
         .video_codec_options = options->video_codec_options,
         .audio_codec_options = options->audio_codec_options,

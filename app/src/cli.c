@@ -59,7 +59,6 @@ enum {
     OPT_SERVER_HOST,
     OPT_CLIENT_LISTEN_VIDEO_PORT,
     OPT_CLIENT_LISTEN_CONTROL_PORT,
-    OPT_LISTEN_ONLY,
     OPT_LISTEN_VIDEO_PORT,
     OPT_LISTEN_CONTROL_PORT,
     OPT_LISTEN_ADDRESS,
@@ -968,12 +967,6 @@ static const struct sc_option options[] = {
         .text = "Set the TCP port on which the client will listen for control stream from the device.",
     },
     {
-        .longopt_id = OPT_LISTEN_ONLY,
-        .longopt = "listen-only",
-        .text = "Listen-only mode: do not use adb, just wait for device connection. "
-                "Requires --client-listen-video-port and --server-host.",
-    },
-    {
         .longopt_id = OPT_LISTEN_VIDEO_PORT,
         .longopt = "listen-video-port",
         .argdesc = "port",
@@ -997,9 +990,9 @@ static const struct sc_option options[] = {
     {
         .longopt_id = OPT_TCP_LISTEN,
         .longopt = "tcp-listen",
-        .text = "Enable TCP listen mode: PC listens on specified ports, device connects to PC.\n"
+        .text = "Enable TCP listen mode (default): PC listens on specified ports, device connects to PC.\n"
                 "This mode does not require adb. Use --listen-video-port and --listen-control-port\n"
-                "to configure the listening ports.",
+                "to configure the listening ports. This is now the default behavior.",
     },
     {
         .shortopt = 'v',
@@ -2539,9 +2532,6 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                 if (!parse_port(optarg, &opts->client_listen_control_port)) {
                     return false;
                 }
-                break;
-            case OPT_LISTEN_ONLY:
-                opts->listen_only = true;
                 break;
             case OPT_LISTEN_VIDEO_PORT:
                 if (!parse_port(optarg, &opts->listen_video_port)) {

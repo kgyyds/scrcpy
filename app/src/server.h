@@ -73,7 +73,6 @@ struct sc_server_params {
     bool power_on;
     bool kill_adb_on_close;
     bool camera_high_speed;
-    bool listen_only;
     bool tcp_listen;                  // PC-side TCP listen mode
     bool vd_destroy_content;
     bool vd_system_decorations;

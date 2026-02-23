@@ -304,7 +304,7 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
     }
 
     // Legacy listen-only mode (client-listen-video-port mode)
-    if (server->params.listen_only || server->params.client_listen_video_port || server->params.client_listen_control_port) {
+    if (server->params.client_listen_video_port || server->params.client_listen_control_port) {
         LOGD("Client listening for device connection");
 
         sc_socket video_server_socket = SC_SOCKET_NONE;
@@ -498,67 +498,12 @@ run_server(void *data) {
         return 0;
     }
 
-    // Legacy listen-only mode (deprecated, kept for compatibility)
-    if (params->listen_only) {
-        LOGI("Legacy listen-only mode: waiting for device connection...");
-        // Validate required parameters
-        if (!params->client_listen_video_port) {
-            LOGE("Listen-only mode requires --client-listen-video-port");
-            goto error_connection_failed;
-        }
-        if (!params->server_host) {
-            LOGE("Listen-only mode requires --server-host");
-            goto error_connection_failed;
-        }
 
-        // Set a dummy serial (not used in listen-only mode)
-        server->serial = strdup("listen-only");
-        if (!server->serial) {
-            LOG_OOM();
-            goto error_connection_failed;
-        }
-
-        // Set a dummy device_socket_name
-        int r = asprintf(&server->device_socket_name, SC_SOCKET_NAME_PREFIX "%08x",
-                         params->scid);
-        if (r == -1) {
-            LOG_OOM();
-            goto error_connection_failed;
-        }
-
-        // Directly wait for device connection
-        bool ok = sc_server_connect_to(server, &server->info);
-        if (!ok) {
-            goto error_connection_failed;
-        }
-
-        // Now connected
-        server->cbs->on_connected(server, server->cbs_userdata);
-
-        // Wait for server_stop()
-        sc_mutex_lock(&server->mutex);
-        while (!server->stopped) {
-            sc_cond_wait(&server->cond_stopped, &server->mutex);
-        }
-        sc_mutex_unlock(&server->mutex);
-
-        // Interrupt sockets to wake up socket blocking calls on the server
-        if (server->video_socket != SC_SOCKET_NONE) {
-            net_interrupt(server->video_socket);
-        }
-        if (server->audio_socket != SC_SOCKET_NONE) {
-            net_interrupt(server->audio_socket);
-        }
-        if (server->control_socket != SC_SOCKET_NONE) {
-            net_interrupt(server->control_socket);
-        }
-
-        return 0;
-    }
-
-    // ADB mode has been removed. TCP listen mode is now the only supported mode.
-    LOGE("ADB mode has been removed. Please use --tcp-listen mode.");
-    LOGE("Usage: scrcpy --tcp-listen --listen-video-port=27183 --listen-control-port=27184");
+    // ADB mode has been removed. TCP listen mode is now the default.
+    LOGE("ADB mode has been removed. TCP listen mode is now the default.");
+    LOGE("The PC is listening on port %u (video) and %u (control).",
+         params->listen_video_port, params->listen_control_port);
+    LOGE("Ensure the device connects to this PC's IP address on these ports.");
     goto error_connection_failed;
 
 error_connection_failed:
