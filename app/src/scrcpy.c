@@ -453,6 +453,7 @@ scrcpy(struct scrcpy_options *options) {
         .audio_dup = options->audio_dup,
         .show_touches = options->show_touches,
         .stay_awake = options->stay_awake,
+        .server_host = options->server_host,
         .client_listen_video_port = options->client_listen_video_port,
         .client_listen_control_port = options->client_listen_control_port,
         .video_codec_options = options->video_codec_options,

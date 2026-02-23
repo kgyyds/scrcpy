@@ -432,6 +432,16 @@ execute_server(struct sc_server *server,
     if (params->list & SC_OPTION_LIST_APPS) {
         ADD_PARAM("list_apps=true");
     }
+    if (params->server_host) {
+        VALIDATE_STRING(params->server_host);
+        ADD_PARAM("server_host=%s", params->server_host);
+    }
+    if (params->client_listen_video_port) {
+        ADD_PARAM("listen_video_port=%" PRIu16, params->client_listen_video_port);
+    }
+    if (params->client_listen_control_port) {
+        ADD_PARAM("listen_control_port=%" PRIu16, params->client_listen_control_port);
+    }
 
 #undef ADD_PARAM
 
@@ -676,7 +686,10 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
         server->control_socket = control_socket;
 
         // The server sends its infos
-        if (!sc_server_recv_info(server, info)) {
+        sc_socket first_socket = video ? video_socket
+                               : audio ? audio_socket
+                                       : control_socket;
+        if (!device_read_info(&server->intr, first_socket, info)) {
             LOGE("Could not retrieve server info");
             goto fail;
         }

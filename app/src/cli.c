@@ -56,6 +56,7 @@ enum {
     OPT_V4L2_BUFFER,
     OPT_TUNNEL_HOST,
     OPT_TUNNEL_PORT,
+    OPT_SERVER_HOST,
     OPT_CLIENT_LISTEN_VIDEO_PORT,
     OPT_CLIENT_LISTEN_CONTROL_PORT,
     OPT_NO_CLIPBOARD_AUTOSYNC,
@@ -941,6 +942,13 @@ static const struct sc_option options[] = {
                 "--force-adb-forward.\n"
                 "Default is 0 (not forced): the local port used for "
                 "establishing the tunnel will be used.",
+    },
+    {
+        .longopt_id = OPT_SERVER_HOST,
+        .longopt = "server-host",
+        .argdesc = "host",
+        .text = "Set the server IP address for the device to connect to "
+                "(used with --client-listen-video-port).",
     },
     {
         .longopt_id = OPT_CLIENT_LISTEN_VIDEO_PORT,
@@ -2479,6 +2487,9 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                 if (!parse_port(optarg, &opts->tunnel_port)) {
                     return false;
                 }
+                break;
+            case OPT_SERVER_HOST:
+                opts->server_host = optarg;
                 break;
             case OPT_CLIENT_LISTEN_VIDEO_PORT:
                 if (!parse_port(optarg, &opts->client_listen_video_port)) {

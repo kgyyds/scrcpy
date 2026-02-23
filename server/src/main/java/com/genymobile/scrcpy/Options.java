@@ -79,6 +79,7 @@ public class Options {
     private boolean sendFrameMeta = true; // send PTS so that the client may record properly
     private boolean sendDummyByte = true; // write a byte on start to detect connection issues
     private boolean sendCodecMeta = true; // write the codec metadata before the stream
+    private String serverHost;
     private int listenVideoPort;
     private int listenControlPort;
 
@@ -306,6 +307,14 @@ public class Options {
         this.listenControlPort = listenControlPort;
     }
 
+    public String getServerHost() {
+        return serverHost;
+    }
+
+    public void setServerHost(String serverHost) {
+        this.serverHost = serverHost;
+    }
+
     @SuppressWarnings("MethodLength")
     public static Options parse(String... args) {
         if (args.length < 1) {
@@ -387,6 +396,11 @@ public class Options {
                     break;
                 case "listen_control_port":
                     options.listenControlPort = Integer.parseInt(value);
+                    break;
+                case "server_host":
+                    if (!value.isEmpty()) {
+                        options.serverHost = value;
+                    }
                     break;
                 case "audio_bit_rate":
                     options.audioBitRate = Integer.parseInt(value);

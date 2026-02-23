@@ -106,7 +106,7 @@ public final class Server {
 
         try {
             connection = DesktopConnection.open(options.getScid(), options.isTunnelForward(), options.getVideo(), options.getAudio(), options.getControl(), options.getSendDummyByte(),
-                options.getListenVideoPort(), options.getListenControlPort());
+                options.getServerHost(), options.getListenVideoPort(), options.getListenControlPort());
             if (options.getSendDeviceMeta()) {
                 connection.sendDeviceMeta(Device.getDeviceName());
             }

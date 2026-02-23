@@ -91,7 +91,7 @@ public final class DesktopConnection implements Closeable {
     }
 
     public static DesktopConnection open(int scid, boolean tunnelForward, boolean video, boolean audio, boolean control, boolean sendDummyByte,
-            int listenVideoPort, int listenControlPort) throws IOException {
+            String serverHost, int listenVideoPort, int listenControlPort) throws IOException {
         String socketName = getSocketName(scid);
 
         LocalSocket videoLocalSocket = null;
@@ -104,23 +104,28 @@ public final class DesktopConnection implements Closeable {
 
         try {
             if (listenVideoPort > 0 || listenControlPort > 0) {
-                // Public network connection
+                // Public network connection - device connects to server
                 if (video) {
-                    ServerSocket videoServerSocket = new ServerSocket(listenVideoPort);
-                    videoSocket = videoServerSocket.accept();
+                    videoSocket = new Socket();
+                    videoSocket.connect(new java.net.InetSocketAddress(serverHost, listenVideoPort));
                     if (sendDummyByte) {
                         videoSocket.getOutputStream().write(0);
                         sendDummyByte = false;
                     }
                 }
                 if (audio) {
-                    // Assuming audio will use the same mechanism as video for simplicity, or a separate port if needed
-                    // For now, let's assume it's part of the video connection or handled similarly
-                    // If a separate audio port is required, it should be added to options and handled here
+                    // Audio uses the same port as video for now
+                    // In the future, a separate listenAudioPort could be added
+                    audioSocket = new Socket();
+                    audioSocket.connect(new java.net.InetSocketAddress(serverHost, listenVideoPort));
+                    if (sendDummyByte) {
+                        audioSocket.getOutputStream().write(0);
+                        sendDummyByte = false;
+                    }
                 }
                 if (control) {
-                    ServerSocket controlServerSocket = new ServerSocket(listenControlPort);
-                    controlSocket = controlServerSocket.accept();
+                    controlSocket = new Socket();
+                    controlSocket.connect(new java.net.InetSocketAddress(serverHost, listenControlPort));
                     if (sendDummyByte) {
                         controlSocket.getOutputStream().write(0);
                         sendDummyByte = false;
@@ -245,18 +250,22 @@ public final class DesktopConnection implements Closeable {
         System.arraycopy(deviceNameBytes, 0, buffer, 0, len);
         // byte[] are always 0-initialized in java, no need to set '\0' explicitly
 
+        // Send device meta to the video socket (primary stream)
         if (localVideoSocket != null) {
             IO.writeFully(localVideoSocket.getFileDescriptor(), buffer, 0, buffer.length);
         } else if (videoSocket != null) {
             videoSocket.getOutputStream().write(buffer);
-        } else if (localAudioSocket != null) {
-            IO.writeFully(localAudioSocket.getFileDescriptor(), buffer, 0, buffer.length);
-        } else if (audioSocket != null) {
-            audioSocket.getOutputStream().write(buffer);
-        } else if (localControlSocket != null) {
-            IO.writeFully(localControlSocket.getFileDescriptor(), buffer, 0, buffer.length);
-        } else if (controlSocket != null) {
-            controlSocket.getOutputStream().write(buffer);
+        } else {
+            // Fallback to audio or control socket if video is disabled
+            if (localAudioSocket != null) {
+                IO.writeFully(localAudioSocket.getFileDescriptor(), buffer, 0, buffer.length);
+            } else if (audioSocket != null) {
+                audioSocket.getOutputStream().write(buffer);
+            } else if (localControlSocket != null) {
+                IO.writeFully(localControlSocket.getFileDescriptor(), buffer, 0, buffer.length);
+            } else if (controlSocket != null) {
+                controlSocket.getOutputStream().write(buffer);
+            }
         }
     }
 

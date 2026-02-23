@@ -256,6 +256,7 @@ struct scrcpy_options {
     struct sc_port_range port_range;
     uint32_t tunnel_host;
     uint16_t tunnel_port;
+    const char *server_host;
     uint16_t client_listen_video_port;
     uint16_t client_listen_control_port;
     uint8_t shortcut_mods; // OR of enum sc_shortcut_mod values
