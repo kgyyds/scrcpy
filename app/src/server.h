@@ -41,7 +41,8 @@ struct sc_server_params {
     uint16_t tunnel_port;
     uint16_t client_listen_video_port;
     uint16_t client_listen_control_port;
-    uint16_t listen_video_port;       // PC listen mode: video/audio port
+    uint16_t listen_video_port;       // PC listen mode: video port
+    uint16_t listen_audio_port;       // PC listen mode: audio port
     uint16_t listen_control_port;     // PC listen mode: control port
     const char *listen_address;       // PC listen mode: bind address
     uint16_t max_size;
