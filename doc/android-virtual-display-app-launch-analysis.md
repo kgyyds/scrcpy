@@ -1,453 +1,435 @@
-# scrcpy Android Server 虚拟显示与应用启动逻辑审查
+# 虚拟显示复用技术文档（scrcpy server）
 
-## 引言
+## 1. 文档目的
 
-本文档面向希望在 **Android 底层 Java 项目中复用 scrcpy server 端虚拟显示能力** 的开发者，目标是系统分析 `server/` 目录中与“创建虚拟显示 + 在目标显示启动应用 + 输入路由”相关的核心实现。重点围绕以下类展开：
+本文档用于直接复用 scrcpy Android server 中“**创建虚拟显示并把 App 启动到该虚拟显示前台**”的实现思路。
 
-- `NewDisplayCapture`
-- `Device`
-- `Controller`
-- `wrappers/DisplayManager`
+聚焦内容：
 
-文档只关注以下主题：
+1. 虚拟显示创建。
+2. 指定 display 启动 Activity（前台）。
+3. 输入事件按 displayId 路由。
+4. 可直接复用代码与改造点。
 
-1. 虚拟显示创建与参数控制。
-2. Surface 绑定与显示尺寸/坐标变换。
-3. 应用如何启动到虚拟显示（强调前台运行，不是后台任务）。
-4. 输入事件如何路由到正确 display。
-5. 这些逻辑在你自己的 Java 项目中的可复用方式。
-
-> 说明：本文不涉及图像采集链路细节（编码/传输/录制），仅讨论“显示创建与应用启动控制”。
+不包含内容：图像采集、编码、推流。
 
 ---
 
-## 背景知识
+## 2. 复用总览（先看这个）
 
-### 虚拟显示（Virtual Display）是什么
+## 2.1 最小可用链路
 
-虚拟显示是 Android 提供的一种“逻辑显示输出目标”，由系统分配独立的 `displayId`。应用窗口可以被启动到该 display 上，输入事件也可按 `displayId` 注入。
+1. 创建 `VirtualDisplay` 并拿到 `virtualDisplayId`。
+2. 启动目标 App 时设置：
+   - `Intent.FLAG_ACTIVITY_NEW_TASK`
+   - `ActivityOptions.setLaunchDisplayId(virtualDisplayId)`
+3. 输入注入时将事件绑定到 `virtualDisplayId`。
 
-在 scrcpy 的 `--new-display` 路径中，核心是调用：
+## 2.2 对应 scrcpy 代码位置
 
-- `DisplayManager.createVirtualDisplay(...)` 创建新的 display。
-- `ActivityOptions.setLaunchDisplayId(displayId)` 指定应用启动目标显示。
-
-这样可形成“物理主屏 + 虚拟屏”的并行显示模型。
-
-### 关键 Android API（本文关注）
-
-- `android.hardware.display.DisplayManager#createVirtualDisplay`
-- `android.hardware.display.VirtualDisplay`
-- `android.app.ActivityOptions#setLaunchDisplayId`
-- `Intent.FLAG_ACTIVITY_NEW_TASK`
-- `InputManager` 注入事件时绑定 displayId（通过系统隐藏接口适配）
-
-### 前台渲染 vs 后台运行（本场景）
-
-在这里，“前台运行应用”强调的是：
-
-1. Activity 真正被启动并附着到目标虚拟显示（有窗口可见、可交互）。
-2. 输入事件被发往该虚拟显示对应窗口。
-
-而“后台”通常指进程存活但 Activity 不在前台可见栈，或服务在后台执行。scrcpy 的实现目标是前者：**将可见 Activity 启动到指定虚拟 display 并可交互**。
+- 虚拟显示创建：`NewDisplayCapture.startNew()` + `wrappers.DisplayManager.createNewVirtualDisplay()`。
+- 启动 App 到目标 display：`Device.startApp()`。
+- 等待 displayId 就绪再启动：`Controller.getStartAppDisplayId()` / `waitDisplayData()`。
+- 输入 display 路由：`Controller.getActionDisplayId()` + `Device.injectEvent()`。
 
 ---
 
-## 流程分析（按执行链路）
+## 3. 详细流程（可直接照着实现）
 
-## 1) 虚拟显示创建流程
+## 3.1 步骤 1：创建虚拟显示
 
-1. 解析 `NewDisplay` 配置（是否显式指定分辨率、dpi）。
-2. 若未显式指定，从主显示读取 `DisplayInfo`，推导虚拟显示尺寸与 dpi。
-3. 构建虚拟显示 flags（公开、演示、仅自身内容、触摸支持、随内容旋转等）。
-4. 调用 `DisplayManager.createNewVirtualDisplay(...)`，得到 `VirtualDisplay` 实例和系统分配的 `displayId`。
-5. 可选设置 IME policy（`WindowManager#setDisplayImePolicy`）。
-6. 启动 `DisplaySizeMonitor` 监听虚拟显示尺寸变化并触发重算。
+1. 决定显示参数：`width`、`height`、`dpi`。
+2. 组装虚拟显示 flags。
+3. 调用 `DisplayManager#createVirtualDisplay(...)`。
+4. 获取 `virtualDisplay.getDisplay().getDisplayId()`。
 
-涉及方法：
+### 3.1.1 scrcpy 参考实现点
 
-- `NewDisplayCapture.init()`
-- `NewDisplayCapture.prepare()`
-- `NewDisplayCapture.startNew(Surface)`
-- `wrappers.DisplayManager.createNewVirtualDisplay(...)`
+- `NewDisplayCapture.init()`：自动从主屏推导 size/dpi。
+- `NewDisplayCapture.startNew()`：拼装 flags 并创建 display。
+- `DisplayManager.createNewVirtualDisplay()`：实际调用系统 API。
 
-## 2) Surface 绑定与尺寸/坐标变换流程
+## 3.2 步骤 2：确保 Surface 绑定正确
 
-1. `prepare()` 根据 crop/rotation/angle/maxSize 计算输出尺寸。
-2. 分离两套变换：
-   - `eventTransform`：输入坐标映射。
-   - `displayTransform`：显示旋转与过滤后纹理变换。
-3. `start(surface)` 中若存在 `displayTransform`，先通过 OpenGL 中间层处理后再绑定 Surface。
-4. 初次创建调用 `startNew(surface)`；后续重建只 `virtualDisplay.setSurface(surface)`。
-5. 创建完成后，通过 `VirtualDisplayListener` 回调给 `Controller` 新 displayId 与 `PositionMapper`。
+1. 创建或准备好渲染 `Surface`。
+2. 首次：创建 display 时传入 surface。
+3. 重建/重连：调用 `virtualDisplay.setSurface(surface)`。
 
-涉及方法：
+### 3.2.1 scrcpy 参考实现点
 
-- `NewDisplayCapture.prepare()`
-- `NewDisplayCapture.start(Surface)`
-- `Controller.onNewVirtualDisplay(...)`
+- `NewDisplayCapture.start()`：首次创建或后续 setSurface。
 
-## 3) 应用启动到虚拟显示流程（重点）
+## 3.3 步骤 3：把 App 启动到虚拟显示（前台关键）
 
-1. 控制层收到“启动应用”命令后，异步执行 `startApp(name)`。
-2. 按包名或名称解析目标应用，获取 `DeviceApp`。
-3. 调用 `getStartAppDisplayId()`：
-   - 若是镜像真实显示，直接用已有 `displayId`。
-   - 若是新建虚拟显示（`DISPLAY_ID_NONE`），等待 `onNewVirtualDisplay()` 回传真实虚拟 `displayId`。
-4. `Device.startApp(...)` 中：
-   - `launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)`。
-   - `ActivityOptions.makeBasic().setLaunchDisplayId(displayId)`。
-   - 通过 `ActivityManager.startActivity(intent, options)` 启动。
-5. 应用 Activity 会在该 display 的前台窗口栈中创建并显示。
+1. 获取目标包名 `packageName` 的 launch intent。
+2. 添加 `FLAG_ACTIVITY_NEW_TASK`。
+3. 构造 `ActivityOptions` 并调用 `setLaunchDisplayId(virtualDisplayId)`。
+4. `startActivity(intent, options)`。
 
-涉及方法：
+### 3.3.1 scrcpy 参考实现点
 
-- `Controller.startAppAsync(...)`
-- `Controller.startApp(...)`
-- `Controller.getStartAppDisplayId()`
-- `Device.startApp(...)`
+- `Device.startApp()`：完整实现。
+- `Controller.getStartAppDisplayId()`：避免 displayId 尚未可用。
 
-## 4) 输入事件路由流程
+## 3.4 步骤 4：输入事件路由到虚拟显示
 
-1. `Controller` 区分“动作类事件”目标 display：
-   - 若是普通镜像：用源 `displayId`。
-   - 若是新虚拟显示：用回调得到的 `virtualDisplayId`。
-2. 触摸/鼠标坐标事件使用 `PositionMapper` 和 `eventTransform` 映射到目标显示坐标。
-3. `Device.injectEvent(...)` 调用前，会对输入事件设置 displayId（非主屏时）。
-4. 最终调用 `InputManager.injectInputEvent(...)` 注入系统。
+1. 维护“当前操作 displayId”。
+2. 触摸/鼠标/滚轮等事件注入前设置 displayId。
+3. 只有 displayId 正确，虚拟显示上的前台 App 才能真实响应。
 
-涉及方法：
+### 3.4.1 scrcpy 参考实现点
 
-- `Controller.getActionDisplayId()`
-- `Controller.injectTouch(...)` / `injectScroll(...)` / `injectKeyEvent(...)`
-- `Device.injectEvent(...)`
-
-## 5) 前后台处理要点
-
-1. 应用启动时使用 `NEW_TASK + setLaunchDisplayId`，确保 Activity 在目标 display 任务栈内创建。
-2. `forceStop` 选项用于冷启动，可减少旧任务干扰。
-3. 对虚拟显示模式，scrcpy 仍保持对主物理屏电源控制的保守策略，避免误将“虚拟显示前台应用”与“物理屏熄灭状态”混淆。
+- `Controller.getActionDisplayId()`。
+- `Device.injectEvent()`（设置 displayId + injectInputEvent）。
 
 ---
 
-## 关键类与方法解析
+## 4. 可复用代码（重点）
 
-### `NewDisplayCapture`
+> 下面代码是“可落地”的复用模板；你可直接复制后替换权限、日志、异常处理。
 
-#### 职责
-
-- 计算新显示参数（size/dpi）。
-- 创建并维护 `VirtualDisplay`。
-- 建立显示变换与输入映射基础。
-
-#### 关键方法
-
-- `init()`：在自动模式下读取主显示尺寸与 dpi，作为推导基准。
-- `prepare()`：应用 crop/rotation/angle/maxSize，得到视频尺寸和事件逆变换。
-- `startNew(Surface)`：拼装 flags 并创建全新虚拟显示。
-- `start(Surface)`：绑定 Surface，首次创建或重绑。
-
-### `Device`
-
-#### 职责
-
-- 提供“设备动作”统一静态入口：输入注入、显示电源、应用启动等。
-
-#### 关键方法
-
-- `startApp(String packageName, int displayId, boolean forceStop)`：核心应用启动逻辑。
-- `injectEvent(InputEvent, int displayId, int injectMode)`：统一输入注入与 display 绑定。
-- `supportsInputEvents(int displayId)`：按系统版本判断次屏输入可行性。
-
-### `Controller`
-
-#### 职责
-
-- 处理控制通道命令，协调虚拟显示创建后的 displayId 分发、应用启动与输入路由。
-
-#### 关键方法
-
-- `onNewVirtualDisplay(int virtualDisplayId, PositionMapper positionMapper)`：接收虚拟 display 元数据。
-- `getActionDisplayId()`：确定当前事件注入 display。
-- `getStartAppDisplayId()`：在新显示模式下等待并拿到 displayId。
-- `startApp(String name)`：应用查找 + 启动总控。
-
-### `wrappers.DisplayManager`
-
-#### 职责
-
-- 封装系统隐藏 API / 反射调用，稳定地提供显示相关能力。
-
-#### 关键方法
-
-- `createNewVirtualDisplay(...)`：使用 `FakeContext` 构造 `DisplayManager` 并创建虚拟显示。
-- `getDisplayInfo(int displayId)`：读取逻辑显示信息（尺寸、旋转、dpi、uniqueId）。
-- `registerDisplayListener(...)`：监听 display 变化，辅助动态更新。
-
----
-
-## 标志位与参数解释
-
-### 虚拟显示 flags（`startNew()`）
-
-#### `VIRTUAL_DISPLAY_FLAG_PUBLIC`
-
-- 作用：使该虚拟显示对系统可见，允许常规显示路由。
-- 注意：与私有显示相比，系统组件可更完整感知该 display。
-
-#### `VIRTUAL_DISPLAY_FLAG_PRESENTATION`
-
-- 作用：标记为演示型显示，适用于将内容投送至非主屏场景。
-
-#### `VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY`
-
-- 作用：限制显示内容来源，避免无关内容混入。
-- 复用建议：多显示隔离场景建议开启。
-
-#### `VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH`
-
-- 作用：声明显示支持触摸输入路径。
-- 注意：仅声明能力，仍需输入注入正确设置 displayId。
-
-#### `VIRTUAL_DISPLAY_FLAG_ROTATES_WITH_CONTENT`
-
-- 作用：显示方向可跟随内容旋转。
-
-#### `VIRTUAL_DISPLAY_FLAG_DESTROY_CONTENT_ON_REMOVAL`
-
-- 作用：移除显示时销毁其内容。
-- 适用：短生命周期虚拟工作区，避免残留。
-
-#### `VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS`
-
-- 作用：允许系统装饰（状态栏/导航栏等）出现在虚拟显示。
-- 注意：是否生效依赖 ROM 与系统策略。
-
-#### Android 13+ 附加 flags
-
-- `TRUSTED` / `OWN_DISPLAY_GROUP` / `ALWAYS_UNLOCKED` / `TOUCH_FEEDBACK_DISABLED`
-- 作用：增强显示信任级别、分组与交互行为控制。
-
-#### Android 14+ 附加 flags
-
-- `OWN_FOCUS` / `DEVICE_DISPLAY_GROUP`
-- 作用：焦点管理与 display group 行为更精细。
-
-### Activity 启动参数
-
-#### `Intent.FLAG_ACTIVITY_NEW_TASK`
-
-- 作用：从非 Activity 上下文启动 Activity 的必要 flag。
-- 在 server 进程（shell/app_process）场景中通常必须设置。
-
-#### `ActivityOptions.setLaunchDisplayId(displayId)`
-
-- 作用：明确指定 Activity 要启动到哪个显示。
-- 这是“前台运行在虚拟显示”最核心参数。
-
-#### `forceStop`（scrcpy 逻辑参数）
-
-- 作用：启动前先 `forceStopPackage`，实现近似冷启动。
-- 注意：会清空应用前台态与部分内存状态。
-
----
-
-## 复用方法建议
-
-## 可直接复用
-
-### 1) 应用按 displayId 前台启动（核心）
-
-- 可直接复用：`Device.startApp()` 的组合思路：`NEW_TASK + setLaunchDisplayId + startActivity`。
-- 适用前提：你拥有足够权限（shell/system 或等效能力）调用对应 API。
-
-### 2) 输入事件 display 路由框架
-
-- 可直接复用：`Controller.getActionDisplayId()` + `Device.injectEvent()` 这一“先确定目标 display，再注入”的架构。
-- 好处：主屏镜像与新建虚拟显示可共用一套事件通道。
-
-### 3) 等待虚拟 display 就绪再启动应用
-
-- 可直接复用：`waitDisplayData(timeout)` 的同步策略。
-- 好处：避免应用先启动导致落到主屏或 displayId 未知。
-
-## 需改动
-
-### 1) `wrappers.DisplayManager` 反射封装
-
-- 需改动：scrcpy 依赖 `FakeContext`、内部封装和隐藏 API 调用习惯。
-- 在你的项目中应替换为你自己的 Context/权限模型，并增加 ROM 兼容兜底。
-
-### 2) 虚拟显示 flags 组合
-
-- 需改动：不同业务对系统装饰、安全策略、焦点行为要求不同。
-- 建议按 Android 版本与设备类型（车机/平板/手机）做策略表。
-
-### 3) 坐标映射/旋转处理
-
-- 需改动：如果你不走 scrcpy 的 `VideoFilter + PositionMapper` 管线，需要自建映射矩阵。
-
-### 4) 应用查找逻辑
-
-- 需改动：scrcpy 包含“按名模糊查找 + 包名查找”CLI 语义，你的 App 内可能只需固定包名启动。
-
----
-
-## Android 版本兼容性
-
-### Android 8.0+
-
-- `ActivityOptions.setLaunchDisplayId()` 可用，是多显示定向启动关键。
-
-### Android 10+
-
-- 次屏输入事件注入支持更完整；scrcpy 也按版本判断 `supportsInputEvents()`。
-
-### Android 13/14+
-
-- 虚拟显示新增 flags，scrcpy 做了分版本追加。
-- 建议在复用时保留版本门控，避免旧系统传入未知 flags。
-
-### Android 15
-
-- scrcpy 对 display power 新接口持保守态度（代码中明确默认关闭新方案），提示你在新系统行为上要做真机验证。
-
-### ROM 差异
-
-- 厂商 ROM（如某些 Android 14 机型）在显示/电源行为上可能不一致。
-- 复用时应增加机型黑名单或 capability 探测。
-
----
-
-## 核心示例代码（可用于 Java 项目改造）
-
-> 下面代码是基于 scrcpy 逻辑提炼的“关键路径片段”，用于说明“创建虚拟显示 + 前台启动应用 + 输入路由”的最小组合。
-
-### 示例 1：创建虚拟显示并绑定 Surface
+## 4.1 代码段 A：创建虚拟显示（可直接复用，按版本裁剪 flags）
 
 ```java
-// 作用：创建一个可交互的虚拟显示，返回 VirtualDisplay（含 displayId）
-// 参数说明：
-// - name: 虚拟显示名称
-// - width/height/dpi: 目标逻辑分辨率与密度
-// - surface: 渲染输出目标（可由你自己的渲染链路提供）
-// 注意：flags 需按 Android 版本动态裁剪，避免低版本不识别
-int flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
-        | DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
-        | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
-        | (1 << 6) // SUPPORTS_TOUCH（内部常量，部分版本需自定义）
-        | (1 << 7); // ROTATES_WITH_CONTENT
+import android.content.Context;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.os.Build;
+import android.view.Surface;
 
-if (Build.VERSION.SDK_INT >= 33) {
-    flags |= (1 << 10)  // TRUSTED
-          |  (1 << 11)  // OWN_DISPLAY_GROUP
-          |  (1 << 12)  // ALWAYS_UNLOCKED
-          |  (1 << 13); // TOUCH_FEEDBACK_DISABLED
-}
-if (Build.VERSION.SDK_INT >= 34) {
-    flags |= (1 << 14)  // OWN_FOCUS
-          |  (1 << 15); // DEVICE_DISPLAY_GROUP
-}
+public final class VirtualDisplayHelper {
 
-DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
-VirtualDisplay vd = dm.createVirtualDisplay(
-        "MyVirtualDisplay",
-        width,
-        height,
-        dpi,
-        surface,
-        flags
-);
+    private VirtualDisplayHelper() {}
 
-int virtualDisplayId = vd.getDisplay().getDisplayId();
-// 后续用于 setLaunchDisplayId() / 输入事件路由
-```
+    /**
+     * 创建虚拟显示并返回实例。
+     *
+     * @param context 上下文（System/Shell 场景通常来自系统进程或受控上下文）
+     * @param name 虚拟显示名称
+     * @param width 逻辑宽度
+     * @param height 逻辑高度
+     * @param dpi 逻辑密度
+     * @param surface 输出 Surface
+     */
+    public static VirtualDisplay createVirtualDisplay(
+            Context context,
+            String name,
+            int width,
+            int height,
+            int dpi,
+            Surface surface
+    ) {
+        DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
+        if (dm == null) {
+            throw new IllegalStateException("DisplayManager is null");
+        }
 
-#### 注释说明
+        // 基础 flags：scrcpy 常用组合
+        int flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+                | DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
+                | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
+                | (1 << 6)  // VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH（内部位）
+                | (1 << 7); // VIRTUAL_DISPLAY_FLAG_ROTATES_WITH_CONTENT（内部位）
 
-- `OWN_CONTENT_ONLY` 可减少内容污染，适合你要“独立工作区”的场景。
-- `SUPPORTS_TOUCH` 只声明能力，真正可点击要配合输入注入到 `virtualDisplayId`。
-- 如果你的项目运行在普通三方应用权限下，某些 flags/行为可能受限。
+        // Android 13+
+        if (Build.VERSION.SDK_INT >= 33) {
+            flags |= (1 << 10) // VIRTUAL_DISPLAY_FLAG_TRUSTED
+                    | (1 << 11) // VIRTUAL_DISPLAY_FLAG_OWN_DISPLAY_GROUP
+                    | (1 << 12) // VIRTUAL_DISPLAY_FLAG_ALWAYS_UNLOCKED
+                    | (1 << 13); // VIRTUAL_DISPLAY_FLAG_TOUCH_FEEDBACK_DISABLED
+        }
 
-### 示例 2：将应用前台启动到指定虚拟显示
+        // Android 14+
+        if (Build.VERSION.SDK_INT >= 34) {
+            flags |= (1 << 14) // VIRTUAL_DISPLAY_FLAG_OWN_FOCUS
+                    | (1 << 15); // VIRTUAL_DISPLAY_FLAG_DEVICE_DISPLAY_GROUP
+        }
 
-```java
-// 作用：把目标应用 Activity 启动到 virtualDisplayId 对应显示
-// 关键点：NEW_TASK + setLaunchDisplayId
-PackageManager pm = context.getPackageManager();
-Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
-if (launchIntent == null) {
-    throw new IllegalStateException("No launch intent for package: " + packageName);
-}
-
-launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-Bundle options = null;
-if (Build.VERSION.SDK_INT >= 26) {
-    ActivityOptions activityOptions = ActivityOptions.makeBasic();
-    activityOptions.setLaunchDisplayId(virtualDisplayId);
-    options = activityOptions.toBundle();
-}
-
-context.startActivity(launchIntent, options);
-```
-
-#### 注释说明
-
-- `setLaunchDisplayId` 决定 Activity 进入哪个 display 的任务栈，是“前台到虚拟显示”的关键。
-- 若你在 service/shell 环境启动，`FLAG_ACTIVITY_NEW_TASK` 通常必需。
-- 若启动时机早于虚拟显示完成创建，可能会落回主屏；建议先等待 displayId 就绪。
-
-### 示例 3：输入事件按 displayId 注入（伪代码）
-
-```java
-// 作用：将输入事件明确投递到目标显示
-// 注意：需要系统级能力；普通应用通常不能直接调用隐藏注入接口
-boolean injectToDisplay(InputEvent event, int targetDisplayId) {
-    if (targetDisplayId != 0) {
-        // 伪代码：给 event 绑定 displayId（scrcpy 通过 InputManager 封装处理）
-        HiddenInputApi.setDisplayId(event, targetDisplayId);
+        VirtualDisplay vd = dm.createVirtualDisplay(name, width, height, dpi, surface, flags);
+        if (vd == null || vd.getDisplay() == null) {
+            throw new IllegalStateException("Failed to create virtual display");
+        }
+        return vd;
     }
-    return HiddenInputApi.injectInputEvent(event);
 }
 ```
 
-#### 注释说明
+### 4.1.1 代码说明与注意事项
 
-- displayId 路由错误会导致“看得到窗口但点不到”。
-- 对触摸坐标要做旋转/裁剪后的映射，避免触点偏移。
+1. `OWN_CONTENT_ONLY`：建议保留，避免显示内容串扰。
+2. `(1<<6)`, `(1<<7)` 等是 internal flag 位；建议封装成常量并按系统版本判断。
+3. 低权限普通三方应用环境下，部分 flag 或行为可能被系统限制。
+4. 创建失败后要做重试和资源回收（`VirtualDisplay.release()`）。
+
+## 4.2 代码段 B：启动 App 到虚拟显示前台（可直接复用）
+
+```java
+import android.app.ActivityOptions;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+
+public final class AppLaunchOnDisplayHelper {
+
+    private AppLaunchOnDisplayHelper() {}
+
+    /**
+     * 将 App 启动到指定 displayId。
+     *
+     * @param context Context
+     * @param packageName 目标包名
+     * @param displayId 目标显示 ID（虚拟显示ID）
+     */
+    public static void launchToDisplay(Context context, String packageName, int displayId) {
+        PackageManager pm = context.getPackageManager();
+        Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
+        if (launchIntent == null) {
+            throw new IllegalArgumentException("No launch intent for package: " + packageName);
+        }
+
+        // 非 Activity 上下文启动必须带 NEW_TASK
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        Bundle options = null;
+        if (Build.VERSION.SDK_INT >= 26) {
+            ActivityOptions ao = ActivityOptions.makeBasic();
+            // 核心 API：让 Activity 在目标 display 前台打开
+            ao.setLaunchDisplayId(displayId);
+            options = ao.toBundle();
+        }
+
+        context.startActivity(launchIntent, options);
+    }
+}
+```
+
+### 4.2.1 代码说明与注意事项
+
+1. **这是前台启动到虚拟显示的核心实现**，关键在 `setLaunchDisplayId(displayId)`。
+2. 若 displayId 还没准备好，App 可能落到主屏；先等待虚拟显示创建完成。
+3. 若业务要求冷启动，可在启动前执行 force-stop（需要系统权限）。
+
+## 4.3 代码段 C：等待 displayId 就绪再启动（可直接复用）
+
+```java
+public final class DisplayIdHolder {
+    private final Object lock = new Object();
+    private Integer virtualDisplayId;
+
+    public void onVirtualDisplayCreated(int displayId) {
+        synchronized (lock) {
+            virtualDisplayId = displayId;
+            lock.notifyAll();
+        }
+    }
+
+    public int waitDisplayId(long timeoutMs) throws InterruptedException {
+        long end = System.currentTimeMillis() + timeoutMs;
+        synchronized (lock) {
+            while (virtualDisplayId == null) {
+                long wait = end - System.currentTimeMillis();
+                if (wait <= 0) {
+                    throw new IllegalStateException("Timeout waiting virtual display id");
+                }
+                lock.wait(wait);
+            }
+            return virtualDisplayId;
+        }
+    }
+}
+```
+
+### 4.3.1 代码说明与注意事项
+
+1. 避免“先启动 App、后创建 Display”的竞态。
+2. scrcpy 对应实现是 `waitDisplayData(1000)`。
+3. 建议超时后明确报错，不要静默回退主屏。
+
+## 4.4 代码段 D：输入事件按 displayId 注入（需改动：权限相关）
+
+```java
+import android.view.InputEvent;
+
+public final class InputRouteHelper {
+
+    private InputRouteHelper() {}
+
+    /**
+     * 伪代码：将输入事件注入到指定 display。
+     * 需要系统权限/隐藏 API 能力。
+     */
+    public static boolean injectToDisplay(InputEvent event, int targetDisplayId) {
+        if (targetDisplayId != 0) {
+            // 对应 scrcpy: InputManager.setDisplayId(event, displayId)
+            HiddenInputApi.setDisplayId(event, targetDisplayId);
+        }
+        return HiddenInputApi.injectInputEvent(event);
+    }
+}
+```
+
+### 4.4.1 代码说明与注意事项
+
+1. 普通三方应用无法直接做全局输入注入。
+2. 只要 displayId 设置错，就会出现“界面在虚拟屏，点击无效”。
+3. 触摸事件还需做坐标变换（旋转/裁剪场景）。
 
 ---
 
-## 实施建议（在你自己的 Java 项目中）
+## 5. 关键 API 详细说明
 
-## 推荐落地顺序
+## 5.1 `DisplayManager#createVirtualDisplay`
 
-1. 先打通“虚拟显示创建 + 获取 displayId”。
-2. 再打通“固定包名应用启动到该 displayId”。
-3. 最后接入输入注入与坐标映射。
+### 5.1.1 作用
 
-## 工程化注意事项
+创建逻辑显示并返回 `VirtualDisplay` 对象。
 
-1. 增加 display 生命周期管理（创建失败重试、释放回收）。
-2. 为不同 API Level 维护 flags 白名单。
-3. 为 ROM 差异建立兼容层（特别是焦点、IME、系统装饰）。
-4. 应用启动和 display 创建采用串行状态机，避免竞态。
+### 5.1.2 关键参数
 
-## 快速判断“是否前台成功”
+1. `name`：显示名字，用于调试识别。
+2. `width/height`：逻辑分辨率。
+3. `dpi`：逻辑密度，会影响布局与资源选择。
+4. `surface`：显示输出目标。
+5. `flags`：显示行为策略（触摸、焦点、装饰等）。
 
-- 现象级：虚拟显示可见应用窗口并可响应点击。
-- 系统级：任务栈/窗口归属 displayId 与预期一致。
-- 输入级：触摸事件日志中的目标 displayId 与虚拟显示一致。
+### 5.1.3 复用注意
+
+- flags 必须做版本门控。
+- display 生命周期要与 surface 生命周期绑定管理。
+
+## 5.2 `VirtualDisplay#getDisplay#getDisplayId`
+
+### 5.2.1 作用
+
+获取系统分配的目标 displayId，后续用于启动 Activity 与注入输入。
+
+### 5.2.2 复用注意
+
+- displayId 是整个链路的关键主键；建议全局只维护一份“当前有效值”。
+
+## 5.3 `Intent.FLAG_ACTIVITY_NEW_TASK`
+
+### 5.3.1 作用
+
+在非 Activity 上下文中启动 Activity 必备。
+
+### 5.3.2 复用注意
+
+- 缺少此 flag 常见表现是启动异常或行为不稳定。
+
+## 5.4 `ActivityOptions#setLaunchDisplayId`
+
+### 5.4.1 作用
+
+指定 Activity 在哪个 display 打开。
+
+### 5.4.2 复用注意
+
+- 这是“前台到虚拟显示”最关键 API。
+- displayId 不可用时不要盲启。
+
+## 5.5 输入注入 API（隐藏能力封装）
+
+### 5.5.1 作用
+
+将输入事件打到目标 display。
+
+### 5.5.2 复用注意
+
+- 通常需要系统权限或 shell/system 执行环境。
+- 需要明确键鼠事件与触摸事件的目标 display 策略。
 
 ---
 
-## 结论
+## 6. 标志位（flags）复用建议
 
-scrcpy 的实现给出了一个成熟范式：
+## 6.1 推荐默认组合
 
-1. 用分版本 flags 创建“可交互的独立虚拟显示”。
-2. 用 `ActivityOptions.setLaunchDisplayId()` 将应用定向到该显示前台。
-3. 用 displayId 感知的输入注入链路保证交互闭环。
+1. `PUBLIC`
+2. `PRESENTATION`
+3. `OWN_CONTENT_ONLY`
+4. `SUPPORTS_TOUCH`（内部位）
+5. `ROTATES_WITH_CONTENT`（内部位）
 
-对于 Android 底层 Java 项目，这三步正是“在虚拟显示前台运行应用”的最小闭环。你可以直接复用其启动与路由思想，再按项目权限模型、ROM 兼容要求做必要改造。
+## 6.2 按版本追加
+
+1. Android 13+：`TRUSTED`、`OWN_DISPLAY_GROUP`、`ALWAYS_UNLOCKED`、`TOUCH_FEEDBACK_DISABLED`
+2. Android 14+：`OWN_FOCUS`、`DEVICE_DISPLAY_GROUP`
+
+## 6.3 可选开关
+
+1. `DESTROY_CONTENT_ON_REMOVAL`：短生命周期工作区建议开。
+2. `SHOULD_SHOW_SYSTEM_DECORATIONS`：需要系统栏时再开。
+
+---
+
+## 7. 可直接复用 / 需改动清单
+
+## 7.1 可直接复用
+
+1. `NEW_TASK + setLaunchDisplayId + startActivity` 启动模型。
+2. “等待 displayId 就绪再启动 App”的同步模型。
+3. “按 displayId 路由输入事件”的控制模型。
+
+## 7.2 需改动
+
+1. 隐藏 API / 反射封装（`wrappers.DisplayManager`、输入注入层）。
+2. flags 策略（不同 ROM/业务需要不同组合）。
+3. 坐标映射（你若没有 scrcpy 的映射管线，需要自建变换）。
+4. 错误处理策略（重试、回退、告警上报）。
+
+---
+
+## 8. 兼容性与风险
+
+## 8.1 Android 版本
+
+1. Android 8.0+：`setLaunchDisplayId` 可用。
+2. Android 10+：次屏输入支持更完整。
+3. Android 13/14+：新增 virtual display flags。
+
+## 8.2 ROM 差异风险
+
+1. 厂商对焦点、系统装饰、输入策略可能有改动。
+2. 建议建立“机型白名单 + 能力探测 + 降级策略”。
+
+## 8.3 常见失败现象与排查
+
+1. **App 跑到主屏**：通常是 displayId 未就绪或 `setLaunchDisplayId` 未生效。
+2. **虚拟屏显示正常但无法点击**：输入事件 displayId 未绑定或坐标映射错误。
+3. **创建显示失败**：flag 不兼容、权限不足或 surface 生命周期异常。
+
+---
+
+## 9. scrcpy 源码映射索引（复用时快速定位）
+
+1. `server/src/main/java/com/genymobile/scrcpy/video/NewDisplayCapture.java`
+   - `init()`
+   - `prepare()`
+   - `startNew(Surface)`
+   - `start(Surface)`
+2. `server/src/main/java/com/genymobile/scrcpy/device/Device.java`
+   - `startApp(...)`
+   - `injectEvent(...)`
+3. `server/src/main/java/com/genymobile/scrcpy/control/Controller.java`
+   - `onNewVirtualDisplay(...)`
+   - `getStartAppDisplayId()`
+   - `waitDisplayData(...)`
+   - `getActionDisplayId()`
+4. `server/src/main/java/com/genymobile/scrcpy/wrappers/DisplayManager.java`
+   - `createNewVirtualDisplay(...)`
+
+---
+
+## 10. 一页式落地清单（实施用）
+
+1. [ ] 封装 `createVirtualDisplay()`，完成 flags 版本门控。
+2. [ ] 建立 `DisplayIdHolder`，确保启动前已拿到 displayId。
+3. [ ] 封装 `launchToDisplay(packageName, displayId)`。
+4. [ ] 封装输入注入层，强制所有事件带目标 displayId。
+5. [ ] 增加异常处理：创建失败、启动失败、display 失效重建。
+6. [ ] 在目标机型做前台验证：可见、可点、可回退。
+
+> 如果你只复用一件事：优先复用 `setLaunchDisplayId(displayId)` + “等待 displayId 就绪”这两步，这是“App 前台跑在虚拟显示”的决定性链路。
