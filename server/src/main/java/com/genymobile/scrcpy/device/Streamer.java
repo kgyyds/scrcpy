@@ -50,7 +50,16 @@ public final class Streamer {
         if (fd != null) {
             IO.writeFully(fd, buffer);
         } else if (os != null) {
-            os.write(buffer.array(), buffer.position(), buffer.remaining());
+            int len = buffer.remaining();
+            if (buffer.hasArray()) {
+                int offset = buffer.arrayOffset() + buffer.position();
+                os.write(buffer.array(), offset, len);
+                buffer.position(buffer.limit());
+            } else {
+                byte[] tmp = new byte[len];
+                buffer.get(tmp);
+                os.write(tmp);
+            }
         } else {
             throw new IOException("No output stream or file descriptor available");
         }
