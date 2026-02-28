@@ -58,7 +58,7 @@ public class Options {
     private boolean powerOffScreenOnClose;
     private boolean clipboardAutosync = true;
     private boolean downsizeOnError = true;
-    private boolean cleanup = true;
+    private boolean cleanup = false;
     private boolean powerOn = true;
 
     private NewDisplay newDisplay;
