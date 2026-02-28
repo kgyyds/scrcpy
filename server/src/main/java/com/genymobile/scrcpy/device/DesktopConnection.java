@@ -1,11 +1,10 @@
 package com.genymobile.scrcpy.device;
 
 import com.genymobile.scrcpy.control.ControlChannel;
-import com.genymobile.scrcpy.util.IO;
+import com.genymobile.scrcpy.util.Ln;
 import com.genymobile.scrcpy.util.StringUtils;
 
 import java.io.Closeable;
-import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -39,6 +38,8 @@ public final class DesktopConnection implements Closeable {
         Socket videoSocket = null;
         Socket audioSocket = null;
         Socket controlSocket = null;
+        String channel = "none";
+        int port = -1;
 
         // Validate parameters
         if (serverHost == null || serverHost.isEmpty()) {
@@ -57,6 +58,10 @@ public final class DesktopConnection implements Closeable {
         try {
             // Client mode - device connects to PC server
             if (video) {
+                channel = "video";
+                port = connectVideoPort;
+                Ln.d("connecting video host=" + serverHost + " port=" + connectVideoPort
+                        + " enabled(video/audio/control)=" + video + "/" + audio + "/" + control);
                 videoSocket = new Socket();
                 videoSocket.connect(new java.net.InetSocketAddress(serverHost, connectVideoPort));
                 if (sendDummyByte) {
@@ -65,6 +70,10 @@ public final class DesktopConnection implements Closeable {
                 }
             }
             if (audio) {
+                channel = "audio";
+                port = connectAudioPort;
+                Ln.d("connecting audio host=" + serverHost + " port=" + connectAudioPort
+                        + " enabled(video/audio/control)=" + video + "/" + audio + "/" + control);
                 audioSocket = new Socket();
                 audioSocket.connect(new java.net.InetSocketAddress(serverHost, connectAudioPort));
                 if (sendDummyByte) {
@@ -73,6 +82,10 @@ public final class DesktopConnection implements Closeable {
                 }
             }
             if (control) {
+                channel = "control";
+                port = connectControlPort;
+                Ln.d("connecting control host=" + serverHost + " port=" + connectControlPort
+                        + " enabled(video/audio/control)=" + video + "/" + audio + "/" + control);
                 controlSocket = new Socket();
                 controlSocket.connect(new java.net.InetSocketAddress(serverHost, connectControlPort));
                 if (sendDummyByte) {
@@ -81,6 +94,8 @@ public final class DesktopConnection implements Closeable {
                 }
             }
         } catch (IOException | RuntimeException e) {
+            Ln.e("Connection failed channel=" + channel + " host=" + serverHost + " port=" + port
+                    + " enabled(video/audio/control)=" + video + "/" + audio + "/" + control, e);
             if (videoSocket != null) {
                 videoSocket.close();
             }
