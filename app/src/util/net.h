@@ -60,6 +60,9 @@ net_listen(sc_socket server_socket, uint32_t addr, uint16_t port, int backlog);
 sc_socket
 net_accept(sc_socket server_socket);
 
+sc_socket
+net_accept_timeout(sc_socket server_socket, int timeout_ms, bool *timed_out);
+
 // the _all versions wait/retry until len bytes have been written/read
 ssize_t
 net_recv(sc_socket socket, void *buf, size_t len);
