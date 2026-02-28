@@ -113,16 +113,28 @@ public final class DesktopConnection implements Closeable {
 
     public void shutdown() throws IOException {
         if (videoSocket != null) {
-            videoSocket.shutdownInput();
-            videoSocket.shutdownOutput();
+            try {
+                videoSocket.shutdownInput();
+                videoSocket.shutdownOutput();
+            } catch (IOException e) {
+                // ignore (socket may already be disconnected)
+            }
         }
         if (audioSocket != null) {
-            audioSocket.shutdownInput();
-            audioSocket.shutdownOutput();
+            try {
+                audioSocket.shutdownInput();
+                audioSocket.shutdownOutput();
+            } catch (IOException e) {
+                // ignore (socket may already be disconnected)
+            }
         }
         if (controlSocket != null) {
-            controlSocket.shutdownInput();
-            controlSocket.shutdownOutput();
+            try {
+                controlSocket.shutdownInput();
+                controlSocket.shutdownOutput();
+            } catch (IOException e) {
+                // ignore (socket may already be disconnected)
+            }
         }
     }
 

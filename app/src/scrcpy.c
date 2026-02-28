@@ -572,7 +572,21 @@ scrcpy(struct scrcpy_options *options) {
 
     struct sc_file_pusher *fp = NULL;
 
-    if (options->video_playback && options->control) {
+    bool has_video_stream = options->video && s->server.video_socket != SC_SOCKET_NONE;
+    bool has_audio_stream = options->audio && s->server.audio_socket != SC_SOCKET_NONE;
+    bool has_control_stream = options->control && s->server.control_socket != SC_SOCKET_NONE;
+
+    if (options->video && !has_video_stream) {
+        LOGW("Video stream requested but not connected; continuing without video stream");
+    }
+    if (options->audio && !has_audio_stream) {
+        LOGW("Audio stream requested but not connected; continuing without audio stream");
+    }
+    if (options->control && !has_control_stream) {
+        LOGW("Control stream requested but not connected; continuing without control stream");
+    }
+
+    if (options->video_playback && has_control_stream) {
         if (!sc_file_pusher_init(&s->file_pusher, serial,
                                  options->push_target)) {
             goto end;
@@ -581,7 +595,7 @@ scrcpy(struct scrcpy_options *options) {
         file_pusher_initialized = true;
     }
 
-    if (options->video) {
+    if (has_video_stream) {
         static const struct sc_demuxer_callbacks video_demuxer_cbs = {
             .on_ended = sc_video_demuxer_on_ended,
         };
@@ -589,7 +603,7 @@ scrcpy(struct scrcpy_options *options) {
                         &video_demuxer_cbs, NULL);
     }
 
-    if (options->audio) {
+    if (has_audio_stream) {
         static const struct sc_demuxer_callbacks audio_demuxer_cbs = {
             .on_ended = sc_audio_demuxer_on_ended,
         };
@@ -597,8 +611,8 @@ scrcpy(struct scrcpy_options *options) {
                         &audio_demuxer_cbs, options);
     }
 
-    bool needs_video_decoder = options->video_playback;
-    bool needs_audio_decoder = options->audio_playback;
+    bool needs_video_decoder = options->video_playback && has_video_stream;
+    bool needs_audio_decoder = options->audio_playback && has_audio_stream;
 #ifdef HAVE_V4L2
     needs_video_decoder |= !!options->v4l2_device;
 #endif
@@ -613,13 +627,13 @@ scrcpy(struct scrcpy_options *options) {
                                   &s->audio_decoder.packet_sink);
     }
 
-    if (options->record_filename) {
+    if (options->record_filename && (has_video_stream || has_audio_stream)) {
         static const struct sc_recorder_callbacks recorder_cbs = {
             .on_ended = sc_recorder_on_ended,
         };
         if (!sc_recorder_init(&s->recorder, options->record_filename,
-                              options->record_format, options->video,
-                              options->audio, options->record_orientation,
+                              options->record_format, has_video_stream,
+                              has_audio_stream, options->record_orientation,
                               &recorder_cbs, NULL)) {
             goto end;
         }
@@ -630,11 +644,11 @@ scrcpy(struct scrcpy_options *options) {
         }
         recorder_started = true;
 
-        if (options->video) {
+        if (has_video_stream) {
             sc_packet_source_add_sink(&s->video_demuxer.packet_source,
                                       &s->recorder.video_packet_sink);
         }
-        if (options->audio) {
+        if (has_audio_stream) {
             sc_packet_source_add_sink(&s->audio_demuxer.packet_source,
                                       &s->recorder.audio_packet_sink);
         }
@@ -645,7 +659,7 @@ scrcpy(struct scrcpy_options *options) {
     struct sc_mouse_processor *mp = NULL;
     struct sc_gamepad_processor *gp = NULL;
 
-    if (options->control) {
+    if (has_control_stream) {
         static const struct sc_controller_callbacks controller_cbs = {
             .on_ended = sc_controller_on_ended,
         };
@@ -804,14 +818,14 @@ aoa_complete:
     }
 
     // There is a controller if and only if control is enabled
-    assert(options->control == !!controller);
+    assert(has_control_stream == !!controller);
 
     if (options->window) {
         const char *window_title =
             options->window_title ? options->window_title : info->device_name;
 
         struct sc_screen_params screen_params = {
-            .video = options->video_playback,
+            .video = options->video_playback && has_video_stream,
             .controller = controller,
             .fp = fp,
             .kp = kp,
@@ -839,7 +853,7 @@ aoa_complete:
         }
         screen_initialized = true;
 
-        if (options->video_playback) {
+        if (options->video_playback && has_video_stream) {
             struct sc_frame_source *src = &s->video_decoder.frame_source;
             if (options->video_buffer) {
                 sc_delay_buffer_init(&s->video_buffer,
@@ -852,7 +866,7 @@ aoa_complete:
         }
     }
 
-    if (options->audio_playback) {
+    if (options->audio_playback && has_audio_stream) {
         sc_audio_player_init(&s->audio_player, options->audio_buffer,
                              options->audio_output_buffer);
         sc_frame_source_add_sink(&s->audio_decoder.frame_source,
@@ -881,14 +895,14 @@ aoa_complete:
     // Now that the header values have been consumed, the socket(s) will
     // receive the stream(s). Start the demuxer(s).
 
-    if (options->video) {
+    if (has_video_stream) {
         if (!sc_demuxer_start(&s->video_demuxer)) {
             goto end;
         }
         video_demuxer_started = true;
     }
 
-    if (options->audio) {
+    if (has_audio_stream) {
         if (!sc_demuxer_start(&s->audio_demuxer)) {
             goto end;
         }
@@ -897,7 +911,7 @@ aoa_complete:
 
     // If the device screen is to be turned off, send the control message after
     // everything is set up
-    if (options->control && options->turn_screen_off) {
+    if (has_control_stream && options->turn_screen_off) {
         struct sc_control_msg msg;
         msg.type = SC_CONTROL_MSG_TYPE_SET_DISPLAY_POWER;
         msg.set_display_power.on = false;
@@ -928,12 +942,12 @@ aoa_complete:
         timeout_started = true;
     }
 
-    if (options->control
+    if (has_control_stream
             && options->gamepad_input_mode != SC_GAMEPAD_INPUT_MODE_DISABLED) {
         init_sdl_gamepads();
     }
 
-    if (options->control && options->start_app) {
+    if (has_control_stream && options->start_app) {
         assert(controller);
 
         char *name = strdup(options->start_app);
@@ -956,7 +970,7 @@ aoa_complete:
     terminate_event_loop();
     LOGD("quit...");
 
-    if (options->video_playback) {
+    if (options->video_playback && has_video_stream) {
         // Close the window immediately on closing, because screen_destroy()
         // may only be called once the video demuxer thread is joined (it may
         // take time)
