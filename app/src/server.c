@@ -219,7 +219,8 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
             }
         }
 
-        // Create and bind video listening socket
+        // Create and bind listening sockets for all enabled streams first.
+        // This avoids races if the device connects quickly to multiple ports.
         if (video) {
             uint16_t port = server->params.listen_video_port;
             if (!port) {
@@ -236,23 +237,13 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
             if (!ok) {
                 LOGE("Could not listen on video port %" PRIu16, port);
                 net_close(video_listen_socket);
+                video_listen_socket = SC_SOCKET_NONE;
                 goto fail;
             }
             LOGI("Listening on video port %" PRIu16 " (address: %s)",
                  port, server->params.listen_address ? server->params.listen_address : "0.0.0.0");
-            video_socket = net_accept_intr(&server->intr, video_listen_socket);
-            net_close(video_listen_socket);  // Close listening socket after accepting
-            if (video_socket == SC_SOCKET_NONE) {
-                LOGE("Could not accept video connection");
-                goto fail;
-            }
-            LOGI("Device connected for video stream");
         }
 
-        sc_tick optional_streams_deadline = sc_tick_now() + SC_TICK_FROM_MS(3000);
-
-        // Create and bind optional listening sockets first, so the device may connect
-        // quickly to any next stream without racing with sequential listen() calls.
         if (audio) {
             uint16_t port = server->params.listen_audio_port;
             if (!port) {
@@ -269,6 +260,7 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
             if (!ok) {
                 LOGE("Could not listen on audio port %" PRIu16, port);
                 net_close(audio_listen_socket);
+                audio_listen_socket = SC_SOCKET_NONE;
                 goto fail;
             }
             LOGI("Listening on audio port %" PRIu16 " (address: %s)",
@@ -291,52 +283,145 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
             if (!ok) {
                 LOGE("Could not listen on control port %" PRIu16, port);
                 net_close(control_listen_socket);
+                control_listen_socket = SC_SOCKET_NONE;
                 goto fail;
             }
             LOGI("Listening on control port %" PRIu16 " (address: %s)",
                  port, server->params.listen_address ? server->params.listen_address : "0.0.0.0");
         }
 
-        if (audio) {
-            sc_tick now = sc_tick_now();
-            int timeout_ms = now >= optional_streams_deadline
-                           ? 0
-                           : (int) SC_TICK_TO_MS(optional_streams_deadline - now);
-            bool timed_out = false;
-            audio_socket = net_accept_timeout(audio_listen_socket, timeout_ms, &timed_out);
-            net_close(audio_listen_socket);
-            audio_listen_socket = SC_SOCKET_NONE;
-            if (audio_socket == SC_SOCKET_NONE) {
-                if (timed_out) {
-                    LOGW("Audio connection timeout after 3s, continuing without audio stream");
+        bool first_connected = false;
+        sc_tick optional_streams_deadline = 0;
+
+        for (;;) {
+            bool pending = false;
+
+            if (video && video_socket == SC_SOCKET_NONE) {
+                pending = true;
+                int timeout_ms;
+                if (!first_connected) {
+                    timeout_ms = 200;
                 } else {
+                    sc_tick now = sc_tick_now();
+                    if (now >= optional_streams_deadline) {
+                        timeout_ms = 0;
+                    } else {
+                        timeout_ms = (int) SC_TICK_TO_MS(optional_streams_deadline - now);
+                    }
+                }
+
+                bool timed_out = false;
+                sc_socket accepted = net_accept_timeout(video_listen_socket, timeout_ms, &timed_out);
+                if (accepted != SC_SOCKET_NONE) {
+                    video_socket = accepted;
+                    net_close(video_listen_socket);
+                    video_listen_socket = SC_SOCKET_NONE;
+                    LOGI("Device connected for video stream");
+                    if (!first_connected) {
+                        first_connected = true;
+                        optional_streams_deadline = sc_tick_now() + SC_TICK_FROM_MS(3000);
+                        LOGI("First stream connected, waiting up to 3s for other streams");
+                    }
+                } else if (!timed_out) {
+                    LOGE("Could not accept video connection");
+                    goto fail;
+                }
+            }
+
+            if (audio && audio_socket == SC_SOCKET_NONE) {
+                pending = true;
+                int timeout_ms;
+                if (!first_connected) {
+                    timeout_ms = 200;
+                } else {
+                    sc_tick now = sc_tick_now();
+                    if (now >= optional_streams_deadline) {
+                        timeout_ms = 0;
+                    } else {
+                        timeout_ms = (int) SC_TICK_TO_MS(optional_streams_deadline - now);
+                    }
+                }
+
+                bool timed_out = false;
+                sc_socket accepted = net_accept_timeout(audio_listen_socket, timeout_ms, &timed_out);
+                if (accepted != SC_SOCKET_NONE) {
+                    audio_socket = accepted;
+                    net_close(audio_listen_socket);
+                    audio_listen_socket = SC_SOCKET_NONE;
+                    LOGI("Device connected for audio stream");
+                    if (!first_connected) {
+                        first_connected = true;
+                        optional_streams_deadline = sc_tick_now() + SC_TICK_FROM_MS(3000);
+                        LOGI("First stream connected, waiting up to 3s for other streams");
+                    }
+                } else if (!timed_out) {
                     LOGE("Could not accept audio connection");
                     goto fail;
                 }
-            } else {
-                LOGI("Device connected for audio stream");
             }
-        }
 
-        if (control) {
-            sc_tick now = sc_tick_now();
-            int timeout_ms = now >= optional_streams_deadline
-                           ? 0
-                           : (int) SC_TICK_TO_MS(optional_streams_deadline - now);
-            bool timed_out = false;
-            control_socket = net_accept_timeout(control_listen_socket, timeout_ms, &timed_out);
-            net_close(control_listen_socket);
-            control_listen_socket = SC_SOCKET_NONE;
-            if (control_socket == SC_SOCKET_NONE) {
-                if (timed_out) {
-                    LOGW("Control connection timeout after 3s, continuing without control stream");
+            if (control && control_socket == SC_SOCKET_NONE) {
+                pending = true;
+                int timeout_ms;
+                if (!first_connected) {
+                    timeout_ms = 200;
                 } else {
+                    sc_tick now = sc_tick_now();
+                    if (now >= optional_streams_deadline) {
+                        timeout_ms = 0;
+                    } else {
+                        timeout_ms = (int) SC_TICK_TO_MS(optional_streams_deadline - now);
+                    }
+                }
+
+                bool timed_out = false;
+                sc_socket accepted = net_accept_timeout(control_listen_socket, timeout_ms, &timed_out);
+                if (accepted != SC_SOCKET_NONE) {
+                    control_socket = accepted;
+                    net_close(control_listen_socket);
+                    control_listen_socket = SC_SOCKET_NONE;
+                    LOGI("Device connected for control stream");
+                    if (!first_connected) {
+                        first_connected = true;
+                        optional_streams_deadline = sc_tick_now() + SC_TICK_FROM_MS(3000);
+                        LOGI("First stream connected, waiting up to 3s for other streams");
+                    }
+                } else if (!timed_out) {
                     LOGE("Could not accept control connection");
                     goto fail;
                 }
-            } else {
-                LOGI("Device connected for control stream");
             }
+
+            if (!pending) {
+                break;
+            }
+
+            if (first_connected && sc_tick_now() >= optional_streams_deadline) {
+                break;
+            }
+        }
+
+        if (!first_connected) {
+            LOGE("No stream connected");
+            goto fail;
+        }
+
+        if (video && video_socket == SC_SOCKET_NONE) {
+            LOGW("Video connection timeout after 3s, continuing without video stream");
+            net_close(video_listen_socket);
+            video_listen_socket = SC_SOCKET_NONE;
+        }
+
+        if (audio && audio_socket == SC_SOCKET_NONE) {
+            LOGW("Audio connection timeout after 3s, continuing without audio stream");
+            net_close(audio_listen_socket);
+            audio_listen_socket = SC_SOCKET_NONE;
+        }
+
+        if (control && control_socket == SC_SOCKET_NONE) {
+            LOGW("Control connection timeout after 3s, continuing without control stream");
+            net_close(control_listen_socket);
+            control_listen_socket = SC_SOCKET_NONE;
         }
 
         // Disable Nagle's algorithm for the control socket
