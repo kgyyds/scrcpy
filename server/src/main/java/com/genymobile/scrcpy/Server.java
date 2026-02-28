@@ -174,6 +174,15 @@ public final class Server {
                 });
             }
 
+            String startApp = options.getStartApp();
+            if (startApp != null) {
+                if (controller != null) {
+                    controller.startAppDirect(startApp);
+                } else {
+                    Ln.w("Ignoring start_app because control is disabled");
+                }
+            }
+
             Looper.loop(); // interrupted by the Completion implementation
         } finally {
             if (cleanUp != null) {

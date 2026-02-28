@@ -641,16 +641,20 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
         return data.virtualDisplayId;
     }
 
+    public void startAppDirect(String name) {
+        startAppAsync(name);
+    }
+
     private void startAppAsync(String name) {
         if (startAppExecutor == null) {
             startAppExecutor = Executors.newSingleThreadExecutor();
         }
 
         // Listing and selecting the app may take a lot of time
-        startAppExecutor.submit(() -> startApp(name));
+        startAppExecutor.submit(() -> startAppNow(name));
     }
 
-    private void startApp(String name) {
+    private void startAppNow(String name) {
         boolean forceStopBeforeStart = name.startsWith("+");
         if (forceStopBeforeStart) {
             name = name.substring(1);

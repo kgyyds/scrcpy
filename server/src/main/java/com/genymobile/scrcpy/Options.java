@@ -87,6 +87,7 @@ public class Options {
     private int connectAudioPort = DEFAULT_CONNECT_AUDIO_PORT;
     private int connectControlPort = DEFAULT_CONNECT_CONTROL_PORT;
     private String clientHost;
+    private String startApp;
 
     public Ln.Level getLogLevel() {
         return logLevel;
@@ -308,6 +309,10 @@ public class Options {
         return clientHost;
     }
 
+    public String getStartApp() {
+        return startApp;
+    }
+
     public void setClientHost(String clientHost) {
         this.clientHost = clientHost;
     }
@@ -420,6 +425,11 @@ public class Options {
                 case "client_host":
                     if (!value.isEmpty()) {
                         options.clientHost = value;
+                    }
+                    break;
+                case "start_app":
+                    if (!value.isEmpty()) {
+                        options.startApp = value;
                     }
                     break;
                 case "connect_video_port":
