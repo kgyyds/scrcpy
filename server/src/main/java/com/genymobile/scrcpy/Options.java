@@ -590,6 +590,12 @@ public class Options {
             options.displayId = Device.DISPLAY_ID_NONE;
         }
 
+        if (!options.tunnelForward && options.serverHost != null && options.sendDummyByte) {
+            // In direct TCP client mode (device connects to PC), there is no adb-forward handshake,
+            // so prepending a dummy byte corrupts the first stream bytes expected by the desktop demuxer.
+            options.sendDummyByte = false;
+        }
+
         return options;
     }
 
