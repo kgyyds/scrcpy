@@ -203,6 +203,42 @@ net_accept(sc_socket server_socket) {
     return wrap(raw_sock);
 }
 
+sc_socket
+net_accept_timeout(sc_socket server_socket, int timeout_ms, bool *timed_out) {
+    sc_raw_socket raw_server_socket = unwrap(server_socket);
+
+    if (timed_out) {
+        *timed_out = false;
+    }
+
+    if (timeout_ms < 0) {
+        return net_accept(server_socket);
+    }
+
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(raw_server_socket, &rfds);
+
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    int ret = select((int) (raw_server_socket + 1), &rfds, NULL, NULL, &tv);
+    if (ret == 0) {
+        if (timed_out) {
+            *timed_out = true;
+        }
+        return SC_SOCKET_NONE;
+    }
+
+    if (ret < 0) {
+        net_perror("select");
+        return SC_SOCKET_NONE;
+    }
+
+    return net_accept(server_socket);
+}
+
 ssize_t
 net_recv(sc_socket socket, void *buf, size_t len) {
     sc_raw_socket raw_sock = unwrap(socket);

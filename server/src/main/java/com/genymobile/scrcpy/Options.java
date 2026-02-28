@@ -87,6 +87,7 @@ public class Options {
     private int connectAudioPort = DEFAULT_CONNECT_AUDIO_PORT;
     private int connectControlPort = DEFAULT_CONNECT_CONTROL_PORT;
     private String clientHost;
+    private String startApp;
 
     public Ln.Level getLogLevel() {
         return logLevel;
@@ -308,6 +309,10 @@ public class Options {
         return clientHost;
     }
 
+    public String getStartApp() {
+        return startApp;
+    }
+
     public void setClientHost(String clientHost) {
         this.clientHost = clientHost;
     }
@@ -420,6 +425,11 @@ public class Options {
                 case "client_host":
                     if (!value.isEmpty()) {
                         options.clientHost = value;
+                    }
+                    break;
+                case "start_app":
+                    if (!value.isEmpty()) {
+                        options.startApp = value;
                     }
                     break;
                 case "connect_video_port":
@@ -588,6 +598,12 @@ public class Options {
         if (options.newDisplay != null) {
             assert options.displayId == 0 : "Must not set both displayId and newDisplay";
             options.displayId = Device.DISPLAY_ID_NONE;
+        }
+
+        if (!options.tunnelForward && options.serverHost != null && options.sendDummyByte) {
+            // In direct TCP client mode (device connects to PC), there is no adb-forward handshake,
+            // so prepending a dummy byte corrupts the first stream bytes expected by the desktop demuxer.
+            options.sendDummyByte = false;
         }
 
         return options;
